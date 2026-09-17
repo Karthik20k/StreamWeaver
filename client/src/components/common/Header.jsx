@@ -1,5 +1,4 @@
 import React from 'react';
-import { Badge } from './Badge';
 import { ZapIcon } from './Icons';
 import { useFPSMonitor } from '../../hooks/useFPSMonitor';
 
@@ -16,7 +15,6 @@ export function Header() {
           <div>
             <div className="brand-title-row">
               <span className="brand-title">StreamWeaver</span>
-              <Badge variant="cyan" size="sm">M1 &bull; Day 01</Badge>
             </div>
             <span className="brand-tagline">High-Throughput No-Code ETL Streaming Pipeline</span>
           </div>
