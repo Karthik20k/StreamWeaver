@@ -5,40 +5,36 @@ export function PipelineStepper({ currentStep = 1, onStepClick }) {
   const steps = [
     {
       id: 1,
-      name: 'Ingestion & Dropzone',
-      subtitle: 'Day 01',
+      name: 'Upload File',
+      stepNum: 'Step 1',
       icon: CloudUploadIcon,
-      status: 'active',
-      desc: 'Multipart File Intake'
+      desc: 'Source CSV, TSV, or JSON'
     },
     {
       id: 2,
-      name: 'Virtualized Preview',
-      subtitle: 'Day 02–03',
+      name: 'Data Preview',
+      stepNum: 'Step 2',
       icon: LayersIcon,
-      status: currentStep >= 2 ? 'active' : 'upcoming',
-      desc: '1k–100k Virtualized Rows'
+      desc: 'Virtualized table grid'
     },
     {
       id: 3,
       name: 'Schema Mapping',
-      subtitle: 'Day 04–06',
+      stepNum: 'Step 3',
       icon: SlidersIcon,
-      status: currentStep >= 3 ? 'active' : 'upcoming',
-      desc: 'Source → MongoDB Fields'
+      desc: 'Field rules & transforms'
     },
     {
       id: 4,
-      name: 'Stream Execution',
-      subtitle: 'Day 08–15',
+      name: 'Run Ingest',
+      stepNum: 'Step 4',
       icon: DatabaseIcon,
-      status: currentStep >= 4 ? 'active' : 'upcoming',
-      desc: 'Bulk Pipeline & Telemetry'
+      desc: 'Stream to MongoDB'
     }
   ];
 
   return (
-    <nav className="pipeline-stepper" aria-label="ETL Pipeline Stages">
+    <nav className="pipeline-stepper" aria-label="Pipeline Stages">
       <div className="stepper-track">
         {steps.map((step, idx) => {
           const Icon = step.icon;
@@ -60,7 +56,7 @@ export function PipelineStepper({ currentStep = 1, onStepClick }) {
                 <div className="stepper-content">
                   <div className="stepper-header-line">
                     <span className="stepper-name">{step.name}</span>
-                    <span className="stepper-subtitle">{step.subtitle}</span>
+                    <span className="stepper-subtitle">{step.stepNum}</span>
                   </div>
                   <span className="stepper-desc">{step.desc}</span>
                 </div>

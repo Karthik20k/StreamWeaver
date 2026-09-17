@@ -33,7 +33,7 @@ export function FileDropzone({
         onDrop={onDrop}
         onClick={handleBrowseClick}
         role="region"
-        aria-label="Drag and Drop File Upload Area"
+        aria-label="File upload dropzone"
       >
         <input
           ref={fileInputRef}
@@ -57,15 +57,15 @@ export function FileDropzone({
 
           <div className="dropzone-text-group">
             <h3 className="dropzone-title">
-              {isDragging ? 'Release to Intake File' : 'Drop dataset file here or click to browse'}
+              {isDragging ? 'Drop file to upload' : 'Drag & drop your file here, or browse'}
             </h3>
             <p className="dropzone-subtitle">
-              Native stream chunking engine &bull; High-throughput RAM-safe ingestion for files up to 5GB+
+              Supports CSV, TSV, JSON, and JSONL files up to 5GB
             </p>
           </div>
 
           <div className="format-tags-row">
-            <span className="format-label">Supported Schemas:</span>
+            <span className="format-label">Formats:</span>
             {acceptedExtensions.map(ext => (
               <Badge key={ext} variant="dark" size="sm">
                 {ext.toUpperCase().replace('.', '')}
@@ -80,14 +80,14 @@ export function FileDropzone({
               icon={FileSpreadsheetIcon}
               onClick={handleBrowseClick}
             >
-              Select File from Disk
+              Choose File
             </Button>
           </div>
 
           {isAnalyzing && (
             <div className="dropzone-analyzing-bar">
               <span className="analyzing-spinner" />
-              <span>Analyzing file slice and detecting schema...</span>
+              <span>Reading file preview...</span>
             </div>
           )}
         </div>

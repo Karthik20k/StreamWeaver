@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayersIcon, ArrowRightIcon, CheckCircleIcon, SparklesIcon } from '../common/Icons';
+import { LayersIcon, ArrowRightIcon } from '../common/Icons';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { formatBytes } from '../../utils/fileHelpers';
@@ -14,17 +14,17 @@ export function PreviewPlaceholder({ file, metadata, onBackToUpload }) {
           </div>
           <div>
             <div className="staged-name-row">
-              <h3 className="staged-title">Virtualized Tabular Preview Ready</h3>
-              <Badge variant="purple" size="sm">Day 02 Deliverable</Badge>
+              <h3 className="staged-title">Data Grid Preview</h3>
+              <Badge variant="purple" size="sm">Stage 2</Badge>
             </div>
             <p className="staged-desc">
-              File <strong>{file?.name}</strong> ({formatBytes(file?.size || 0)}) successfully staged for <code>react-window</code> DOM virtualization.
+              <strong>{file?.name}</strong> ({formatBytes(file?.size || 0)}) loaded and ready for preview.
             </p>
           </div>
         </div>
 
         <Button variant="outline" size="sm" onClick={onBackToUpload}>
-          &larr; Back to File Ingestion
+          &larr; Back to Upload
         </Button>
       </div>
 
@@ -39,20 +39,18 @@ export function PreviewPlaceholder({ file, metadata, onBackToUpload }) {
             <span className="stat-title">Estimated Rows</span>
           </div>
           <div className="staged-stat">
-            <span className="stat-num text-emerald">60 FPS</span>
-            <span className="stat-title">Target Scroll Rate</span>
+            <span className="stat-num text-emerald">{metadata?.detectedDelimiter === '\t' ? 'Tab' : metadata?.detectedDelimiter || ','}</span>
+            <span className="stat-title">Delimiter</span>
           </div>
           <div className="staged-stat">
-            <span className="stat-num text-purple">&lt;150MB</span>
-            <span className="stat-title">RAM Budget</span>
+            <span className="stat-num text-purple">{formatBytes(file?.size || 0)}</span>
+            <span className="stat-title">File Size</span>
           </div>
         </div>
 
         <div className="staged-roadmap-alert">
-          <SparklesIcon size={20} className="text-cyan flex-shrink-0" />
           <div className="roadmap-text">
-            <strong>Day 01 Complete:</strong> File intake and drag-and-drop ingestion successfully staged.
-            Next step (<strong>Day 02</strong>): Integrate <code>react-window</code> to render the virtualized data container grid with zero browser lag.
+            Virtual scrolling grid table is being wired up for large row counts. Use the button above to change files or configure parser settings.
           </div>
         </div>
       </div>

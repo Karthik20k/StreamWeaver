@@ -1,6 +1,6 @@
 import React from 'react';
 import { SAMPLE_DATASETS } from '../../utils/sampleDatasets';
-import { FileSpreadsheetIcon, SparklesIcon } from '../common/Icons';
+import { FileSpreadsheetIcon } from '../common/Icons';
 import { Badge } from '../common/Badge';
 
 export function SampleDataSelector({ onSelectSample, activeSampleId }) {
@@ -8,10 +8,9 @@ export function SampleDataSelector({ onSelectSample, activeSampleId }) {
     <div className="sample-datasets-container">
       <div className="sample-header">
         <div className="sample-title-row">
-          <SparklesIcon size={16} className="text-cyan" />
-          <h4 className="sample-heading">Quick Test with Demo Datasets</h4>
+          <h4 className="sample-heading">Sample Datasets</h4>
         </div>
-        <span className="sample-subtext">Click any preset to simulate instant file drop and schema analysis</span>
+        <span className="sample-subtext">Load a pre-configured sample to test the pipeline</span>
       </div>
 
       <div className="sample-cards-grid">

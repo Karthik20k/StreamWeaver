@@ -1,7 +1,3 @@
-/**
- * Preset datasets to allow instant testing and verification of the Dropzone UI
- * without needing manual external CSV files.
- */
 export const SAMPLE_DATASETS = [
   {
     id: 'ecommerce_orders',
@@ -82,11 +78,6 @@ export const SAMPLE_DATASETS = [
   }
 ];
 
-/**
- * Creates a real browser File object from a sample dataset preset.
- * @param {string} datasetId 
- * @returns {File}
- */
 export function createSampleFile(datasetId) {
   const preset = SAMPLE_DATASETS.find(d => d.id === datasetId) || SAMPLE_DATASETS[0];
   const { fileName, mimeType, content } = preset.generateContent();

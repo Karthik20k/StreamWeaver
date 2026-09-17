@@ -1,9 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 
-/**
- * Custom hook to monitor real-time browser FPS.
- * Directly supports Member 1's mission of maintaining 60 FPS under data streaming.
- */
 export function useFPSMonitor() {
   const [fps, setFps] = useState(60);
   const frameCount = useRef(0);

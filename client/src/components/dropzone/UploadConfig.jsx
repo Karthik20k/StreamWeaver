@@ -9,13 +9,13 @@ export function UploadConfig({
     <div className="upload-config-panel">
       <div className="config-header">
         <SlidersIcon size={16} className="text-cyan" />
-        <h4 className="config-heading">Parser & Stream Intake Configuration</h4>
+        <h4 className="config-heading">Parser Settings</h4>
       </div>
 
       <div className="config-grid">
         <div className="config-item">
           <label className="config-label" htmlFor="delimiter-select">
-            Delimiter Override
+            Delimiter
           </label>
           <select
             id="delimiter-select"
@@ -23,7 +23,7 @@ export function UploadConfig({
             value={config.delimiter}
             onChange={(e) => onChange({ ...config, delimiter: e.target.value })}
           >
-            <option value="auto">Auto-Detect (Recommended)</option>
+            <option value="auto">Auto-Detect</option>
             <option value=",">Comma (,)</option>
             <option value=";">Semicolon (;)</option>
             <option value="&#9;">Tab (\t)</option>
@@ -41,15 +41,15 @@ export function UploadConfig({
             value={config.encoding}
             onChange={(e) => onChange({ ...config, encoding: e.target.value })}
           >
-            <option value="utf-8">UTF-8 (Standard)</option>
+            <option value="utf-8">UTF-8</option>
             <option value="ascii">ASCII</option>
-            <option value="iso-8859-1">ISO-8859-1 (Latin-1)</option>
+            <option value="iso-8859-1">ISO-8859-1</option>
           </select>
         </div>
 
         <div className="config-item">
           <label className="config-label" htmlFor="chunk-size-select">
-            Stream Chunk Buffer
+            Chunk Buffer
           </label>
           <select
             id="chunk-size-select"
@@ -57,9 +57,9 @@ export function UploadConfig({
             value={config.chunkSize}
             onChange={(e) => onChange({ ...config, chunkSize: Number(e.target.value) })}
           >
-            <option value={65536}>64 KB (Balanced High-Throughput)</option>
-            <option value={32768}>32 KB (Ultra-Low RAM Bounded)</option>
-            <option value={131072}>128 KB (High-Bandwidth Network)</option>
+            <option value={65536}>64 KB (Default)</option>
+            <option value={32768}>32 KB (Low memory)</option>
+            <option value={131072}>128 KB (High speed)</option>
           </select>
         </div>
 

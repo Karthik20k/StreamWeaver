@@ -16,21 +16,21 @@ export function Header() {
             <div className="brand-title-row">
               <span className="brand-title">StreamWeaver</span>
             </div>
-            <span className="brand-tagline">High-Throughput No-Code ETL Streaming Pipeline</span>
+            <span className="brand-tagline">High-Throughput ETL Streaming Pipeline</span>
           </div>
         </div>
       </div>
 
       <div className="header-right">
-        <div className="branch-tag" title="Active development branch for Member 1">
+        <div className="branch-tag" title="Git branch">
           <span className="branch-dot"></span>
           <code>feature/ui-analytics</code>
         </div>
 
-        <div className="fps-counter" title="Real-time DOM rendering performance monitor">
+        <div className="fps-counter" title="Viewport render rate">
           <span className={`fps-dot ${fps >= 55 ? 'fps-good' : 'fps-warn'}`}></span>
-          <span className="fps-value">{fps} FPS</span>
-          <span className="fps-label">Zero Lag</span>
+          <span className="fps-value">{fps}</span>
+          <span className="fps-label">FPS</span>
         </div>
       </div>
     </header>

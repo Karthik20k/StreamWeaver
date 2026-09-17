@@ -27,7 +27,7 @@ export function FileDetailsCard({
               <h3 className="file-name">{file.name}</h3>
               <Badge variant="emerald" size="sm">
                 <CheckCircleIcon size={12} className="mr-1" />
-                Verified Dataset
+                Loaded
               </Badge>
             </div>
             <div className="file-subtitle-specs">
@@ -59,48 +59,48 @@ export function FileDetailsCard({
           <span className="metric-label">Estimated Chunks</span>
           <div className="metric-value-row">
             <span className="metric-value">{chunksCount.toLocaleString()}</span>
-            <span className="metric-unit">@ 64KB</span>
+            <span className="metric-unit">chunks</span>
           </div>
-          <span className="metric-subtext">Stream chunking bound</span>
+          <span className="metric-subtext">64KB stream buffer</span>
         </div>
 
         <div className="metric-box">
-          <span className="metric-label">Detected Delimiter</span>
+          <span className="metric-label">Delimiter</span>
           <div className="metric-value-row">
             <span className="metric-value font-mono">
               {metadata.detectedDelimiter === '\t' ? '\\t (Tab)' : `"${metadata.detectedDelimiter}"`}
             </span>
           </div>
-          <span className="metric-subtext">Auto-detected syntax</span>
+          <span className="metric-subtext">Detected</span>
         </div>
 
         <div className="metric-box">
-          <span className="metric-label">Estimated Records</span>
+          <span className="metric-label">Estimated Rows</span>
           <div className="metric-value-row">
             <span className="metric-value text-cyan">
               {metadata.estimatedRows ? metadata.estimatedRows.toLocaleString() : 'Estimating...'}
             </span>
-            <span className="metric-unit">Rows</span>
+            <span className="metric-unit">rows</span>
           </div>
-          <span className="metric-subtext">Memory-safe slice calc</span>
+          <span className="metric-subtext">Approx. count</span>
         </div>
 
         <div className="metric-box">
-          <span className="metric-label">Detected Fields</span>
+          <span className="metric-label">Columns</span>
           <div className="metric-value-row">
             <span className="metric-value text-purple">
               {metadata.headers ? metadata.headers.length : 0}
             </span>
-            <span className="metric-unit">Columns</span>
+            <span className="metric-unit">fields</span>
           </div>
-          <span className="metric-subtext">First row headers</span>
+          <span className="metric-subtext">From header row</span>
         </div>
       </div>
 
       {/* Headers preview pill list */}
       {metadata.headers && metadata.headers.length > 0 && (
         <div className="headers-preview-section">
-          <span className="section-label">Source Schema Fields:</span>
+          <span className="section-label">Source Columns:</span>
           <div className="headers-pill-wrap">
             {metadata.headers.map((hdr, i) => (
               <span key={i} className="header-pill">
@@ -112,12 +112,12 @@ export function FileDetailsCard({
         </div>
       )}
 
-      {/* Memory-Safe Raw Sample Snippet */}
+      {/* Raw Sample Snippet */}
       {metadata.snippet && (
         <div className="snippet-preview-section">
           <div className="snippet-header">
-            <span className="section-label">First 5 Sample Records (Non-blocking Slice Preview):</span>
-            <span className="slice-tag">RAM-safe slice (&lt;8KB)</span>
+            <span className="section-label">First 5 Rows Preview:</span>
+            <span className="slice-tag">Sample preview</span>
           </div>
           <pre className="snippet-code-block">
             <code>{metadata.snippet}</code>
@@ -129,7 +129,7 @@ export function FileDetailsCard({
       <div className="file-details-footer">
         <div className="footer-left-info">
           <ZapIcon size={16} className="text-cyan" />
-          <span>File staged for virtualized grid rendering (Day 02)</span>
+          <span>Dataset ready for table preview</span>
         </div>
 
         <div className="footer-actions">
@@ -138,7 +138,7 @@ export function FileDetailsCard({
             size="md"
             onClick={onReset}
           >
-            Change Dataset
+            Change File
           </Button>
 
           <Button
@@ -147,7 +147,7 @@ export function FileDetailsCard({
             icon={ArrowRightIcon}
             onClick={onProceed}
           >
-            Proceed to Virtualized Preview (Day 02)
+            Continue to Preview
           </Button>
         </div>
       </div>

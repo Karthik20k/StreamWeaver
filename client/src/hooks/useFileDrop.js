@@ -2,9 +2,6 @@ import { useState, useCallback } from 'react';
 import { validateFileType, readInitialSnippet } from '../utils/fileHelpers';
 import { createSampleFile } from '../utils/sampleDatasets';
 
-/**
- * Custom hook to handle HTML5 drag-and-drop states, file parsing, and slice previews.
- */
 export function useFileDrop(options = {}) {
   const { acceptedExtensions = ['.csv', '.tsv', '.json', '.jsonl'] } = options;
 
@@ -14,7 +11,6 @@ export function useFileDrop(options = {}) {
   const [error, setError] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Process a selected or dropped file
   const processFile = useCallback(async (selectedFile) => {
     if (!selectedFile) return;
 
@@ -29,7 +25,6 @@ export function useFileDrop(options = {}) {
     setIsAnalyzing(true);
 
     try {
-      // Memory-safe slice read: reads first few KB only
       const preview = await readInitialSnippet(selectedFile);
       setFileMetadata({
         name: selectedFile.name,
@@ -48,7 +43,6 @@ export function useFileDrop(options = {}) {
     }
   }, [acceptedExtensions]);
 
-  // Drag event listeners
   const onDragEnter = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -64,7 +58,6 @@ export function useFileDrop(options = {}) {
   const onDragLeave = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only set dragging false if leaving the container boundaries
     if (e.currentTarget.contains(e.relatedTarget)) return;
     setIsDragging(false);
   }, []);
@@ -80,7 +73,6 @@ export function useFileDrop(options = {}) {
     }
   }, [processFile]);
 
-  // File browser picker handler
   const onFileSelect = useCallback((e) => {
     const selectedFiles = e.target.files;
     if (selectedFiles && selectedFiles.length > 0) {
@@ -88,13 +80,11 @@ export function useFileDrop(options = {}) {
     }
   }, [processFile]);
 
-  // Load sample dataset
   const loadSampleDataset = useCallback((datasetId) => {
     const sampleFile = createSampleFile(datasetId);
     processFile(sampleFile);
   }, [processFile]);
 
-  // Reset file state
   const resetFile = useCallback(() => {
     setFile(null);
     setFileMetadata(null);
