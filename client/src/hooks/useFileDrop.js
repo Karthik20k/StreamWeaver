@@ -1,13 +1,18 @@
 import { useState, useCallback } from 'react';
-import { validateFileType, readInitialSnippet } from '../utils/fileHelpers';
+import { validateFileType } from '../utils/fileHelpers';
+import { parseChunkedFile } from '../utils/chunkedCsvParser';
 import { createSampleFile } from '../utils/sampleDatasets';
 
 export function useFileDrop(options = {}) {
-  const { acceptedExtensions = ['.csv', '.tsv', '.json', '.jsonl'] } = options;
+  const { 
+    acceptedExtensions = ['.csv', '.tsv', '.json', '.jsonl', '.txt'],
+    uploadConfig = {}
+  } = options;
 
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState(null);
   const [fileMetadata, setFileMetadata] = useState(null);
+  const [parsedRows, setParsedRows] = useState([]);
   const [error, setError] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -25,23 +30,32 @@ export function useFileDrop(options = {}) {
     setIsAnalyzing(true);
 
     try {
-      const preview = await readInitialSnippet(selectedFile);
+      const result = await parseChunkedFile(selectedFile, {
+        maxSliceBytes: 1024 * 1024,
+        maxRows: 1000,
+        delimiter: uploadConfig.delimiter === 'auto' ? '' : uploadConfig.delimiter
+      });
+
+      setParsedRows(result.rows || []);
       setFileMetadata({
         name: selectedFile.name,
         size: selectedFile.size,
-        type: selectedFile.type || 'text/plain',
+        type: selectedFile.type || 'text/csv',
         lastModified: selectedFile.lastModified,
-        headers: preview.headers,
-        detectedDelimiter: preview.detectedDelimiter,
-        estimatedRows: preview.estimatedRows,
-        snippet: preview.snippet
+        headers: result.headers,
+        rowsCount: result.rows.length,
+        detectedDelimiter: result.detectedDelimiter,
+        estimatedRows: result.estimatedTotalRows,
+        bytesParsed: result.bytesParsed,
+        parseDurationMs: result.parseDurationMs,
+        snippet: result.snippet
       });
     } catch (err) {
       setError(`Failed to read file preview: ${err.message}`);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [acceptedExtensions]);
+  }, [acceptedExtensions, uploadConfig.delimiter]);
 
   const onDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -88,6 +102,7 @@ export function useFileDrop(options = {}) {
   const resetFile = useCallback(() => {
     setFile(null);
     setFileMetadata(null);
+    setParsedRows([]);
     setError(null);
   }, []);
 
@@ -95,6 +110,7 @@ export function useFileDrop(options = {}) {
     isDragging,
     file,
     fileMetadata,
+    parsedRows,
     error,
     isAnalyzing,
     onDragEnter,
@@ -103,6 +119,7 @@ export function useFileDrop(options = {}) {
     onDrop,
     onFileSelect,
     loadSampleDataset,
-    resetFile
+    resetFile,
+    processFile
   };
 }

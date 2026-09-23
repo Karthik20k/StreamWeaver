@@ -53,7 +53,6 @@ export function FileDetailsCard({
         </div>
       </div>
 
-      {/* Metrics Grid */}
       <div className="file-metrics-grid">
         <div className="metric-box">
           <span className="metric-label">Estimated Chunks</span>
@@ -75,14 +74,14 @@ export function FileDetailsCard({
         </div>
 
         <div className="metric-box">
-          <span className="metric-label">Estimated Rows</span>
+          <span className="metric-label">Estimated Total</span>
           <div className="metric-value-row">
             <span className="metric-value text-cyan">
               {metadata.estimatedRows ? metadata.estimatedRows.toLocaleString() : 'Estimating...'}
             </span>
             <span className="metric-unit">rows</span>
           </div>
-          <span className="metric-subtext">Approx. count</span>
+          <span className="metric-subtext">Approx. in full file</span>
         </div>
 
         <div className="metric-box">
@@ -95,9 +94,19 @@ export function FileDetailsCard({
           </div>
           <span className="metric-subtext">From header row</span>
         </div>
+
+        <div className="metric-box">
+          <span className="metric-label">Worker Parse Speed</span>
+          <div className="metric-value-row">
+            <span className="metric-value text-emerald">
+              {metadata.parseDurationMs !== undefined ? `${metadata.parseDurationMs}` : '< 150'}
+            </span>
+            <span className="metric-unit">ms</span>
+          </div>
+          <span className="metric-subtext">{metadata.rowsCount || 1000} preview rows (1MB slice)</span>
+        </div>
       </div>
 
-      {/* Headers preview pill list */}
       {metadata.headers && metadata.headers.length > 0 && (
         <div className="headers-preview-section">
           <span className="section-label">Source Columns:</span>
@@ -112,7 +121,6 @@ export function FileDetailsCard({
         </div>
       )}
 
-      {/* Raw Sample Snippet */}
       {metadata.snippet && (
         <div className="snippet-preview-section">
           <div className="snippet-header">
@@ -125,7 +133,6 @@ export function FileDetailsCard({
         </div>
       )}
 
-      {/* Footer Action Bar */}
       <div className="file-details-footer">
         <div className="footer-left-info">
           <ZapIcon size={16} className="text-cyan" />

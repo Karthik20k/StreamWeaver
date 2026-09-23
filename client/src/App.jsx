@@ -8,7 +8,7 @@ import { FileDropzone } from './components/dropzone/FileDropzone';
 import { FileDetailsCard } from './components/dropzone/FileDetailsCard';
 import { SampleDataSelector } from './components/dropzone/SampleDataSelector';
 import { UploadConfig } from './components/dropzone/UploadConfig';
-import { PreviewPlaceholder } from './components/preview/PreviewPlaceholder';
+import { PreviewStage } from './components/preview/PreviewStage';
 import { useFileDrop } from './hooks/useFileDrop';
 
 export default function App() {
@@ -26,6 +26,7 @@ export default function App() {
     isDragging,
     file,
     fileMetadata,
+    parsedRows,
     error,
     isAnalyzing,
     onDragEnter,
@@ -35,7 +36,7 @@ export default function App() {
     onFileSelect,
     loadSampleDataset,
     resetFile
-  } = useFileDrop();
+  } = useFileDrop({ uploadConfig });
 
   const handleSelectSample = (sampleId) => {
     setActiveSampleId(sampleId);
@@ -102,9 +103,10 @@ export default function App() {
       )}
 
       {currentStep === 2 && (
-        <PreviewPlaceholder
+        <PreviewStage
           file={file}
           metadata={fileMetadata}
+          parsedRows={parsedRows}
           onBackToUpload={() => setCurrentStep(1)}
         />
       )}

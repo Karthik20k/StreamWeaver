@@ -28,7 +28,6 @@ export function validateFileType(file, acceptedExtensions = ['.csv', '.tsv', '.j
   return { valid: true };
 }
 
-// Read first few KB to get headers and detect delimiter without loading full file into memory
 export async function readInitialSnippet(file, maxBytes = 8192) {
   return new Promise((resolve, reject) => {
     const slice = file.slice(0, Math.min(file.size, maxBytes));
@@ -50,7 +49,6 @@ export async function readInitialSnippet(file, maxBytes = 8192) {
 
         const firstLine = lines[0];
         
-        // Simple delimiter detection
         const commaCount = (firstLine.match(/,/g) || []).length;
         const tabCount = (firstLine.match(/\t/g) || []).length;
         const semiCount = (firstLine.match(/;/g) || []).length;
@@ -74,7 +72,6 @@ export async function readInitialSnippet(file, maxBytes = 8192) {
           .split(detectedDelimiter)
           .map(h => h.replace(/^["']|["']$/g, '').trim());
 
-        // Rough estimation based on sampled line length
         const avgLineBytes = text.length / Math.max(lines.length, 1);
         const estimatedRows = avgLineBytes > 0 ? Math.round(file.size / avgLineBytes) : lines.length;
 
