@@ -49,3 +49,52 @@ export function calculateColumnWidths(headers = [], sampleRows = [], options = {
     getColumnWidth
   };
 }
+
+export function inferColumnTypes(headers = [], sampleRows = []) {
+  const types = {};
+  if (!headers || headers.length === 0) return types;
+
+  const rowsToScan = sampleRows.slice(0, 30);
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
+  for (const col of headers) {
+    let numCount = 0;
+    let dateCount = 0;
+    let boolCount = 0;
+    let totalValid = 0;
+
+    for (const row of rowsToScan) {
+      const val = row?.[col];
+      if (val === null || val === undefined || val === '') continue;
+      totalValid++;
+
+      if (typeof val === 'number') {
+        numCount++;
+      } else if (val instanceof Date) {
+        dateCount++;
+      } else if (typeof val === 'boolean' || val === 'true' || val === 'false') {
+        boolCount++;
+      } else if (typeof val === 'string') {
+        if (!isNaN(Number(val)) && val.trim() !== '') {
+          numCount++;
+        } else if (isoDateRegex.test(val.trim()) || (!isNaN(Date.parse(val.trim())) && val.includes('-'))) {
+          dateCount++;
+        }
+      }
+    }
+
+    if (totalValid === 0) {
+      types[col] = 'str';
+    } else if (numCount / totalValid >= 0.7) {
+      types[col] = 'num';
+    } else if (dateCount / totalValid >= 0.7) {
+      types[col] = 'date';
+    } else if (boolCount / totalValid >= 0.7) {
+      types[col] = 'bool';
+    } else {
+      types[col] = 'str';
+    }
+  }
+
+  return types;
+}

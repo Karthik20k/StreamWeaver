@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 
 export function useStreamingUpload(options = {}) {
   const {
-    apiEndpoint = 'http://localhost:5000/api/upload/stream',
+    apiEndpoint = '/api/upload/stream',
     fieldName = 'file'
   } = options;
 
