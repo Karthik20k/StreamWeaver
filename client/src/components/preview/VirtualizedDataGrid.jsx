@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { VariableSizeGrid } from 'react-window';
-import { calculateColumnWidths } from '../../utils/columnAutoSizer';
+import { calculateColumnWidths, inferColumnTypes } from '../../utils/columnAutoSizer';
 import { CheckIcon, CopyIcon, SparklesIcon } from '../common/Icons';
 
 export function VirtualizedDataGrid({
@@ -19,19 +19,45 @@ export function VirtualizedDataGrid({
     height: 560
   });
 
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'none' });
   const [copiedValue, setCopiedValue] = useState(null);
 
-  const filteredRows = useMemo(() => {
-    if (!searchQuery || !searchQuery.trim()) return rows;
-    const query = searchQuery.toLowerCase().trim();
+  const columnTypes = useMemo(() => {
+    return inferColumnTypes(headers, rows);
+  }, [headers, rows]);
 
-    return rows.filter((row) => {
-      return Object.values(row).some((val) => {
-        if (val === null || val === undefined) return false;
-        return String(val).toLowerCase().includes(query);
+  const displayRows = useMemo(() => {
+    let list = rows;
+    if (searchQuery && searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      list = list.filter((row) => {
+        return Object.values(row).some((val) => {
+          if (val === null || val === undefined) return false;
+          return String(val).toLowerCase().includes(query);
+        });
       });
-    });
-  }, [rows, searchQuery]);
+    }
+
+    if (sortConfig.key && sortConfig.direction !== 'none') {
+      const key = sortConfig.key;
+      const isAsc = sortConfig.direction === 'asc';
+      list = [...list].sort((a, b) => {
+        const valA = a[key];
+        const valB = b[key];
+        if (valA === valB) return 0;
+        if (valA === null || valA === undefined) return 1;
+        if (valB === null || valB === undefined) return -1;
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return isAsc ? valA - valB : valB - valA;
+        }
+        const strA = String(valA).toLowerCase();
+        const strB = String(valB).toLowerCase();
+        return isAsc ? strA.localeCompare(strB) : strB.localeCompare(strA);
+      });
+    }
+
+    return list;
+  }, [rows, searchQuery, sortConfig]);
 
   const { indexColWidth, columnWidths, totalWidth, getColumnWidth } = useMemo(() => {
     return calculateColumnWidths(headers, rows);
@@ -81,6 +107,27 @@ export function VirtualizedDataGrid({
     }
   }, []);
 
+  const handleHeaderWheel = useCallback((e) => {
+    if (!gridRef.current || !headerViewportRef.current) return;
+    if (Math.abs(e.deltaX) > 0) {
+      const newScrollLeft = headerViewportRef.current.scrollLeft + e.deltaX;
+      headerViewportRef.current.scrollLeft = newScrollLeft;
+      gridRef.current.scrollTo({ scrollLeft: newScrollLeft });
+    }
+  }, []);
+
+  const handleHeaderClick = useCallback((colName) => {
+    setSortConfig((prev) => {
+      if (prev.key !== colName) {
+        return { key: colName, direction: 'asc' };
+      }
+      if (prev.direction === 'asc') {
+        return { key: colName, direction: 'desc' };
+      }
+      return { key: null, direction: 'none' };
+    });
+  }, []);
+
   const handleCellClick = useCallback((val) => {
     if (val === null || val === undefined) return;
     const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
@@ -91,7 +138,7 @@ export function VirtualizedDataGrid({
   }, []);
 
   const Cell = useCallback(({ columnIndex, rowIndex, style }) => {
-    const row = filteredRows[rowIndex];
+    const row = displayRows[rowIndex];
     if (!row) return null;
 
     if (columnIndex === 0) {
@@ -140,7 +187,7 @@ export function VirtualizedDataGrid({
         {content}
       </div>
     );
-  }, [filteredRows, headers, handleCellClick]);
+  }, [displayRows, headers, handleCellClick]);
 
   if (!rows || rows.length === 0) {
     return (
@@ -155,7 +202,7 @@ export function VirtualizedDataGrid({
   }
 
   const columnCount = headers.length + 1;
-  const rowCount = filteredRows.length;
+  const rowCount = displayRows.length;
   const rowHeight = 40;
 
   return (
@@ -164,6 +211,7 @@ export function VirtualizedDataGrid({
         className="grid-header-viewport" 
         ref={headerViewportRef}
         onScroll={handleHeaderScroll}
+        onWheel={handleHeaderWheel}
         style={{ width: containerDimensions.width }}
       >
         <div className="grid-header-row" style={{ width: Math.max(totalWidth, containerDimensions.width) }}>
@@ -176,22 +224,32 @@ export function VirtualizedDataGrid({
 
           {headers.map((colName, idx) => {
             const width = columnWidths[idx] || 140;
+            const colType = columnTypes[colName] || 'str';
+            const isSorted = sortConfig.key === colName;
             return (
               <div
                 key={colName}
-                className="grid-header-cell"
+                className={`grid-header-cell ${isSorted ? 'is-sorted' : ''}`}
                 style={{ width, minWidth: width }}
-                title={colName}
+                onClick={() => handleHeaderClick(colName)}
+                title={`Click to sort by ${colName}`}
               >
                 <span className="header-title-text">{colName}</span>
-                <span className="header-type-tag">col</span>
+                <div className="flex items-center gap-1">
+                  <span className={`header-type-tag type-${colType}`}>{colType}</span>
+                  {isSorted && (
+                    <span className="header-sort-indicator">
+                      {sortConfig.direction === 'asc' ? '▲' : '▼'}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
 
-      {filteredRows.length > 0 ? (
+      {displayRows.length > 0 ? (
         <div className="grid-body-viewport">
           <VariableSizeGrid
             ref={gridRef}
@@ -219,8 +277,14 @@ export function VirtualizedDataGrid({
         <div className="footer-stats-group">
           <div className="footer-stat-item">
             <span>Showing:</span>
-            <strong>{filteredRows.length.toLocaleString()} rows</strong>
-            {searchQuery && <span className="text-cyan text-xs">(filtered)</span>}
+            <strong>{displayRows.length.toLocaleString()} rows</strong>
+            {(searchQuery || sortConfig.direction !== 'none') && (
+              <span className="text-cyan text-xs">
+                {searchQuery ? '(filtered' : ''}
+                {searchQuery && sortConfig.direction !== 'none' ? ', ' : ''}
+                {sortConfig.direction !== 'none' ? `sorted ${sortConfig.direction})` : searchQuery ? ')' : ''}
+              </span>
+            )}
           </div>
           <div className="footer-stat-item">
             <span>Columns:</span>

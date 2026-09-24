@@ -4,7 +4,8 @@ import {
   SearchIcon, 
   ZapIcon, 
   CloudUploadIcon, 
-  ActivityIcon 
+  ActivityIcon,
+  XIcon
 } from '../common/Icons';
 import { Button } from '../common/Button';
 import { formatBytes } from '../../utils/fileHelpers';
@@ -89,6 +90,16 @@ export function PreviewToolbar({
             onChange={(e) => onSearchChange(e.target.value)}
             className="search-input"
           />
+          {searchQuery && (
+            <button
+              className="search-clear-btn"
+              onClick={() => onSearchChange('')}
+              title="Clear search filter"
+              aria-label="Clear filter"
+            >
+              <XIcon size={14} />
+            </button>
+          )}
         </div>
 
         <Button
