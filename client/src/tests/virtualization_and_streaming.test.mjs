@@ -10,16 +10,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const serverEntryPath = path.resolve(__dirname, '../../../server/src/index.js');
 
-async function testDay3Benchmark() {
+async function testSliceParsingBenchmark() {
   const headers = ['transaction_id', 'account_id', 'timestamp', 'operation', 'amount', 'currency', 'status', 'latency_ms', 'origin_ip'];
   const lines = [headers.join(',')];
   for (let i = 1; i <= 1000; i++) {
     lines.push(`TX-${100000 + i},ACC-${8000 + (i % 200)},2026-09-17T18:00:00Z,AUTHORIZE,${(25.5 + (i * 18.25) % 1500).toFixed(2)},USD,SUCCESS,${12 + (i % 80)},192.168.1.${i % 250}`);
   }
   const csvContent = lines.join('\n');
-
-  const simulatedTotalSize = 2 * 1024 * 1024 * 1024;
-  const sliceSize = 1024 * 1024;
 
   const t0 = performance.now();
   const parsed = Papa.parse(csvContent, {
@@ -38,11 +35,11 @@ async function testDay3Benchmark() {
     throw new Error(`Expected ${headers.length} headers, got ${parsed.meta.fields.length}`);
   }
   if (duration >= 300) {
-    throw new Error(`Day 3 Benchmark SLA exceeded: ${duration.toFixed(2)}ms >= 300ms`);
+    throw new Error(`Performance SLA exceeded: ${duration.toFixed(2)}ms >= 300ms`);
   }
 }
 
-function testDay3ColumnAutoSizer() {
+function testColumnAutoSizerAndTypes() {
   const sample = SAMPLE_DATASETS[0].generateContent();
   const parsed = Papa.parse(sample.content, {
     header: true,
@@ -81,7 +78,7 @@ function testDay3ColumnAutoSizer() {
   }
 }
 
-function testDay4FilteringAndSorting() {
+function testGridFilteringAndSorting() {
   const rows = [
     { id: 'TX-1', user: 'Alice', amount: 50.5, status: 'COMPLETED' },
     { id: 'TX-2', user: 'Bob', amount: 15.0, status: 'PENDING' },
@@ -107,7 +104,17 @@ function testDay4FilteringAndSorting() {
   }
 }
 
-async function testDay4BackendStreamingUpload() {
+function testSampleDatasetsIntegrity() {
+  for (const ds of SAMPLE_DATASETS) {
+    const generated = ds.generateContent();
+    const lines = generated.content.split('\n');
+    if (lines.length < 1000) {
+      throw new Error(`Dataset ${ds.id} produced insufficient rows: ${lines.length}`);
+    }
+  }
+}
+
+async function testBackendStreamingUpload() {
   const appModule = await import(pathToFileURL(serverEntryPath).href);
   const app = appModule.default || appModule;
 
@@ -122,7 +129,7 @@ async function testDay4BackendStreamingUpload() {
 
     const prefix = Buffer.from(
       `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="file"; filename="week1_day4_sample.csv"\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="sample_stream_upload.csv"\r\n` +
       `Content-Type: text/csv\r\n\r\n`
     );
     const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
@@ -167,11 +174,12 @@ async function testDay4BackendStreamingUpload() {
 process.env.NODE_ENV = 'test';
 
 async function runAll() {
-  await testDay3Benchmark();
-  testDay3ColumnAutoSizer();
-  testDay4FilteringAndSorting();
-  await testDay4BackendStreamingUpload();
-  console.log('Week 1 Day 3 and Day 4 verification tests passed successfully.');
+  await testSliceParsingBenchmark();
+  testColumnAutoSizerAndTypes();
+  testGridFilteringAndSorting();
+  testSampleDatasetsIntegrity();
+  await testBackendStreamingUpload();
+  console.log('Virtualization and streaming verification tests passed successfully.');
   process.exit(0);
 }
 
