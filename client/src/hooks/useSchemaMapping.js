@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { PREDEFINED_TARGET_SCHEMAS, calculateAutoMappings } from '../utils/targetSchemas';
+import { PREDEFINED_TARGET_SCHEMAS } from '../utils/targetSchemas';
+import { performSmartAutoMatch } from '../utils/autoMapper';
+import { validateMappingConfig } from '../utils/configValidator';
 import { getDefaultRuleForTarget, DEFAULT_TRANSFORMATION_RULE } from '../utils/transformationRules';
+import { inferColumnTypes } from '../utils/columnAutoSizer';
 
 export function useSchemaMapping({
   sourceHeaders = [],
@@ -12,8 +15,14 @@ export function useSchemaMapping({
   const [selectedSchemaId, setSelectedSchemaId] = useState(initialSchemaId);
   const [mappings, setMappings] = useState({});
   const [transformations, setTransformations] = useState({});
+  const [autoMatchReport, setAutoMatchReport] = useState(null);
   const [isLoadingSchemas, setIsLoadingSchemas] = useState(false);
   const [apiError, setApiError] = useState(null);
+
+  // Inferred column types for compatibility analysis
+  const inferredTypes = useMemo(() => {
+    return inferColumnTypes(sourceHeaders, sampleRows);
+  }, [sourceHeaders, sampleRows]);
 
   // Fetch target schemas from Dev 2's API on mount, fallback cleanly to local schemas
   useEffect(() => {
@@ -76,12 +85,12 @@ export function useSchemaMapping({
     if (sourceHeaders && sourceHeaders.length > 0 && targetFields && targetFields.length > 0) {
       setMappings((prevMappings) => {
         if (Object.keys(prevMappings).length === 0) {
-          const initial = calculateAutoMappings(sourceHeaders, targetFields);
+          const result = performSmartAutoMatch(sourceHeaders, targetFields);
           
           // Seed transformation rules for automatically mapped fields
           setTransformations((prevTransforms) => {
             const nextTransforms = { ...prevTransforms };
-            for (const [srcCol, tgtName] of Object.entries(initial)) {
+            for (const [srcCol, tgtName] of Object.entries(result.mappings)) {
               if (!nextTransforms[srcCol]) {
                 const targetDef = targetFields.find((f) => f.name === tgtName);
                 nextTransforms[srcCol] = getDefaultRuleForTarget(targetDef);
@@ -90,7 +99,7 @@ export function useSchemaMapping({
             return nextTransforms;
           });
 
-          return initial;
+          return result.mappings;
         }
         return prevMappings;
       });
@@ -179,26 +188,47 @@ export function useSchemaMapping({
     });
   }, []);
 
+  // Resolve duplicate collision by keeping only one source column mapped to the target
+  const resolveDuplicate = useCallback((targetFieldName, sourceColToKeep) => {
+    setMappings((prev) => {
+      const next = { ...prev };
+      for (const [src, tgt] of Object.entries(next)) {
+        if (tgt === targetFieldName && src !== sourceColToKeep) {
+          delete next[src];
+        }
+      }
+      next[sourceColToKeep] = targetFieldName;
+      return next;
+    });
+  }, []);
+
   // Clear all current active mappings and rules
   const clearAllMappings = useCallback(() => {
     setMappings({});
     setTransformations({});
+    setAutoMatchReport(null);
   }, []);
 
-  // Trigger automated matching algorithm with smart defaults
-  const autoMapAll = useCallback(() => {
-    const auto = calculateAutoMappings(sourceHeaders, targetFields);
-    setMappings(auto);
+  // Trigger automated matching algorithm with smart defaults and report
+  const autoMapAll = useCallback((options = {}) => {
+    const result = performSmartAutoMatch(sourceHeaders, targetFields, options);
+    setMappings(result.mappings);
 
     // Initialize rules for newly auto-mapped fields
     const nextTransforms = {};
-    for (const [srcCol, tgtName] of Object.entries(auto)) {
+    for (const [srcCol, tgtName] of Object.entries(result.mappings)) {
       const targetDef = targetFields.find((f) => f.name === tgtName);
       nextTransforms[srcCol] = getDefaultRuleForTarget(targetDef);
     }
     setTransformations(nextTransforms);
-    return auto;
+    setAutoMatchReport(result);
+    return result;
   }, [sourceHeaders, targetFields]);
+
+  // Dismiss auto match report modal
+  const clearAutoMatchReport = useCallback(() => {
+    setAutoMatchReport(null);
+  }, []);
 
   // Update transformation rules for a specific source column
   const setTransformation = useCallback((sourceCol, ruleUpdates) => {
@@ -241,17 +271,23 @@ export function useSchemaMapping({
     setSelectedSchemaId(schemaId);
     const targetSchema = schemas.find((s) => s.id === schemaId);
     if (targetSchema) {
-      const auto = calculateAutoMappings(sourceHeaders, targetSchema.fields);
-      setMappings(auto);
+      const result = performSmartAutoMatch(sourceHeaders, targetSchema.fields);
+      setMappings(result.mappings);
 
       const nextTransforms = {};
-      for (const [srcCol, tgtName] of Object.entries(auto)) {
+      for (const [srcCol, tgtName] of Object.entries(result.mappings)) {
         const targetDef = targetSchema.fields.find((f) => f.name === tgtName);
         nextTransforms[srcCol] = getDefaultRuleForTarget(targetDef);
       }
       setTransformations(nextTransforms);
+      setAutoMatchReport(result);
     }
   }, [schemas, sourceHeaders]);
+
+  // Comprehensive Pre-Upload Validation Checker (Day 3 Requirement)
+  const validation = useMemo(() => {
+    return validateMappingConfig(mappings, targetFields, sourceHeaders, inferredTypes);
+  }, [mappings, targetFields, sourceHeaders, inferredTypes]);
 
   // Mapping statistics and validation metrics
   const stats = useMemo(() => {
@@ -262,11 +298,9 @@ export function useSchemaMapping({
     const unmappedSourceCount = Math.max(0, totalSource - mappedCount);
 
     const requiredFields = targetFields.filter((f) => f.required);
-    const mappedTargetNames = new Set(Object.values(mappings));
-    
-    const missingRequired = requiredFields.filter((f) => !mappedTargetNames.has(f.name));
+    const missingRequired = validation.missingRequiredFields;
     const mappedRequiredCount = requiredFields.length - missingRequired.length;
-    const isAllRequiredMapped = missingRequired.length === 0;
+    const isAllRequiredMapped = validation.isValid;
 
     const completionPercentage = totalTarget > 0 
       ? Math.round((mappedCount / totalTarget) * 100) 
@@ -287,7 +321,7 @@ export function useSchemaMapping({
       completionPercentage,
       totalRulesConfigured
     };
-  }, [sourceHeaders, targetFields, mappings, transformations]);
+  }, [sourceHeaders, targetFields, mappings, transformations, validation]);
 
   // Export clean config payload for Day 4 upload and Dev 1 transformer
   const exportConfig = useCallback(() => {
@@ -296,15 +330,21 @@ export function useSchemaMapping({
       targetCollection: activeSchema.targetCollection,
       mappingRules: { ...mappings },
       transformRules: { ...transformations },
+      validation: {
+        isValid: validation.isValid,
+        canProceed: validation.canProceed,
+        errors: validation.errors,
+        warnings: validation.warnings
+      },
       metadata: {
         totalSourceHeaders: sourceHeaders.length,
         totalTargetFields: targetFields.length,
         mappedPairsCount: Object.keys(mappings).length,
-        allRequiredMapped: stats.isAllRequiredMapped,
+        allRequiredMapped: validation.isValid,
         generatedAt: new Date().toISOString()
       }
     };
-  }, [activeSchema, mappings, transformations, sourceHeaders, targetFields, stats]);
+  }, [activeSchema, mappings, transformations, validation, sourceHeaders, targetFields]);
 
   return {
     schemas,
@@ -314,14 +354,19 @@ export function useSchemaMapping({
     mappings,
     reverseMappings,
     transformations,
+    inferredTypes,
+    autoMatchReport,
+    validation,
     isLoadingSchemas,
     apiError,
     setSelectedSchemaId: handleSelectSchema,
     setMapping,
     removeMapping,
     removeMappingByTarget,
+    resolveDuplicate,
     clearAllMappings,
     autoMapAll,
+    clearAutoMatchReport,
     setTransformation,
     resetTransformation,
     getTransformation,
