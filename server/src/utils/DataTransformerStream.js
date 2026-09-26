@@ -1,10 +1,14 @@
 'use strict';
 
 const { Transform } = require('stream');
+const { processField } = require('./transformHelpers');
 
 class DataTransformerStream extends Transform {
   constructor(mappingRules = {}, options = {}) {
-    super({ ...options, objectMode: true });
+    super({
+      ...options,
+      objectMode: true,
+    });
 
     if (
       typeof mappingRules !== 'object' ||
@@ -22,20 +26,50 @@ class DataTransformerStream extends Transform {
     this._rowIndex += 1;
 
     const rowNumber = this._rowIndex;
+    const data = {};
+    const errors = [];
 
     try {
-      const data = {};
-
-      for (const [sourceKey, targetKey] of Object.entries(
+      for (const [sourceKey, rule] of Object.entries(
         this.mappingRules
       )) {
-        data[targetKey] = chunk[sourceKey];
+        let fieldRule;
+
+        if (typeof rule === 'string') {
+          fieldRule = {
+            sourceKey,
+            targetKey: rule,
+          };
+        } else if (
+          typeof rule === 'object' &&
+          rule !== null
+        ) {
+          fieldRule = {
+            ...rule,
+            sourceKey,
+            targetKey: rule.targetKey || sourceKey,
+          };
+        } else {
+          fieldRule = {
+            sourceKey,
+            targetKey: sourceKey,
+          };
+        }
+
+        const result = processField(
+          chunk[sourceKey],
+          fieldRule,
+          rowNumber
+        );
+
+        data[fieldRule.targetKey] = result.value;
+        errors.push(...result.errors);
       }
 
       this.push({
-        isValid: true,
+        isValid: errors.length === 0,
         data,
-        errors: [],
+        errors,
       });
 
       callback();

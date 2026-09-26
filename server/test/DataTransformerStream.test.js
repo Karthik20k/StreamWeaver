@@ -4,23 +4,54 @@ const assert = require('assert');
 const DataTransformerStream = require('../src/utils/DataTransformerStream');
 
 const mappingRules = {
-  name: 'fullName',
-  age: 'userAge',
-  city: 'location',
+  name: {
+    targetKey: 'fullName',
+    transformations: ['trim', 'uppercase'],
+    type: 'string',
+  },
+
+  age: {
+    targetKey: 'userAge',
+    transformations: ['trim'],
+    type: 'integer',
+  },
+
+  salary: {
+    targetKey: 'salary',
+    transformations: ['trim'],
+    type: 'float',
+  },
+
+  active: {
+    targetKey: 'isActive',
+    transformations: ['trim', 'lowercase'],
+    type: 'boolean',
+  },
+
+  joined: {
+    targetKey: 'joinedAt',
+    transformations: ['trim'],
+    type: 'date',
+  },
+
+  city: {
+    targetKey: 'city',
+    transformations: ['trim', 'titlecase'],
+    type: 'string',
+    fallback: 'UNKNOWN',
+  },
 };
 
 const transformer = new DataTransformerStream(mappingRules);
 
 const inputRows = [
   {
-    name: 'Amit',
+    name: '  amit kumar  ',
     age: '22',
-    city: 'Ranchi',
-  },
-  {
-    name: 'Priya',
-    age: '23',
-    city: 'Patna',
+    salary: '45,000.50',
+    active: 'yes',
+    joined: '2026-01-15',
+    city: ' ranchi ',
   },
 ];
 
@@ -31,33 +62,29 @@ transformer.on('data', (row) => {
 });
 
 transformer.on('end', () => {
-  assert.strictEqual(outputRows.length, 2);
+  assert.strictEqual(outputRows.length, 1);
 
-  assert.deepStrictEqual(outputRows[0], {
-    isValid: true,
-    data: {
-      fullName: 'Amit',
-      userAge: '22',
-      location: 'Ranchi',
-    },
-    errors: [],
-  });
+  const result = outputRows[0];
 
-  assert.deepStrictEqual(outputRows[1], {
-    isValid: true,
-    data: {
-      fullName: 'Priya',
-      userAge: '23',
-      location: 'Patna',
-    },
-    errors: [],
-  });
+  assert.strictEqual(result.isValid, true);
+  assert.strictEqual(result.data.fullName, 'AMIT KUMAR');
+  assert.strictEqual(result.data.userAge, 22);
+  assert.strictEqual(result.data.salary, 45000.5);
+  assert.strictEqual(result.data.isActive, true);
+  assert.strictEqual(result.data.city, 'Ranchi');
 
-  console.log('DataTransformerStream test passed');
+  assert.ok(
+    typeof result.data.joinedAt === 'string' &&
+    result.data.joinedAt.length > 0
+  );
+
+  assert.deepStrictEqual(result.errors, []);
+
+  console.log('Day 2 transform helpers test passed');
 });
 
 transformer.on('error', (err) => {
-  console.error('DataTransformerStream test failed:', err);
+  console.error('Day 2 test failed:', err);
   process.exitCode = 1;
 });
 
