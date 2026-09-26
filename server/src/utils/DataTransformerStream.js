@@ -1,14 +1,17 @@
 'use strict';
 
 const { Transform } = require('stream');
-const { processField } = require('./transformHelpers');
 
 class DataTransformerStream extends Transform {
-  constructor(mappingRules = [], options = {}) {
+  constructor(mappingRules = {}, options = {}) {
     super({ ...options, objectMode: true });
 
-    if (!Array.isArray(mappingRules)) {
-      throw new TypeError('mappingRules must be an array');
+    if (
+      typeof mappingRules !== 'object' ||
+      mappingRules === null ||
+      Array.isArray(mappingRules)
+    ) {
+      throw new TypeError('mappingRules must be an object');
     }
 
     this.mappingRules = mappingRules;
@@ -17,40 +20,44 @@ class DataTransformerStream extends Transform {
 
   _transform(chunk, _encoding, callback) {
     this._rowIndex += 1;
+
     const rowNumber = this._rowIndex;
 
-    let result;
-
     try {
-      result = this._applyRules(chunk, rowNumber);
+      const data = {};
+
+      for (const [sourceKey, targetKey] of Object.entries(
+        this.mappingRules
+      )) {
+        data[targetKey] = chunk[sourceKey];
+      }
+
+      this.push({
+        isValid: true,
+        data,
+        errors: [],
+      });
+
+      callback();
     } catch (err) {
-      result = {
+      this.push({
         isValid: false,
         data: chunk,
-        errors: [{ field: '__transform__', message: err.message, rowNumber }],
-      };
-    }
+        errors: [
+          {
+            field: '__transform__',
+            message: err.message,
+            rowNumber,
+          },
+        ],
+      });
 
-    this.push(result);
-    callback();
+      callback();
+    }
   }
 
   _flush(callback) {
     callback();
-  }
-
-  _applyRules(rawRow, rowNumber) {
-    const data = {};
-    const errors = [];
-
-    for (const rule of this.mappingRules) {
-      const rawValue = rawRow[rule.sourceKey];
-      const { value, errors: fieldErrors } = processField(rawValue, rule, rowNumber);
-      data[rule.targetKey] = value;
-      errors.push(...fieldErrors);
-    }
-
-    return { isValid: errors.length === 0, data, errors };
   }
 }
 
