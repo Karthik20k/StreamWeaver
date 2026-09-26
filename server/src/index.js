@@ -3,6 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const uploadRouter = require('./routes/upload');
+const schemasRouter = require('./routes/schemas');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,9 +14,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Content-Length']
 }));
 
-app.use('/api/upload', uploadRouter);
-
 app.use(express.json());
+
+app.use('/api/upload', uploadRouter);
+app.use('/api/schemas', schemasRouter);
 
 app.get('/health', (req, res) => {
   const mem = process.memoryUsage();

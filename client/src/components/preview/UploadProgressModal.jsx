@@ -8,7 +8,8 @@ export function UploadProgressModal({
   isOpen,
   onClose,
   file,
-  uploadState
+  uploadState,
+  mappingConfig = null
 }) {
   const [useSimulation, setUseSimulation] = useState(false);
 
@@ -34,7 +35,9 @@ export function UploadProgressModal({
   const isAborted = status === 'aborted';
 
   const handleStart = () => {
-    startUpload(file, useSimulation);
+    startUpload(file, useSimulation, {
+      mappingConfig: mappingConfig ? JSON.stringify(mappingConfig) : '{}'
+    });
   };
 
   const handleClose = () => {
@@ -57,6 +60,11 @@ export function UploadProgressModal({
             <CloudUploadIcon size={20} className="text-cyan" />
             <h3 className="modal-title-text">Stream to Backend</h3>
             <Badge variant="purple" size="sm">HTTP Stream</Badge>
+            {mappingConfig && (
+              <Badge variant="emerald" size="sm">
+                {Object.keys(mappingConfig.mappingRules || {}).length} Mapped
+              </Badge>
+            )}
           </div>
           <button className="modal-close-btn" onClick={handleClose} aria-label="Close modal">
             <XIcon size={18} />
