@@ -1,16 +1,64 @@
+'use strict';
+
 const express = require('express');
 const busboy = require('busboy');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { pipeline } = require('stream/promises');
-const { Transform } = require('stream');
+
+const uploadConfig = require('../config/upload.config');
+const { cleanupFile, ensureUploadDir } = require('../utils/cleanup');
+const {
+  progressStore,
+  initProgress,
+  finalizeProgress,
+  pipeFileToDisk,
+} = require('../utils/streamHandler');
 
 const router = express.Router();
 
-const UPLOAD_DIR = path.resolve(__dirname, '..', '..', 'uploads', 'temp');
+ensureUploadDir(uploadConfig.uploadDir).catch((err) => {
+  console.error('[Startup] Could not create upload directory:', err.message);
+  process.exit(1);
+});
 
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function validateFileType(filename, mimeType) {
+  const ext = path.extname(filename).toLowerCase();
+
+  if (!uploadConfig.allowedExtensions.includes(ext)) {
+    return (
+      `File extension "${ext}" is not allowed. ` +
+      `Accepted: ${uploadConfig.allowedExtensions.join(', ')}`
+    );
+  }
+
+  if (!uploadConfig.allowedMimeTypes.includes(mimeType)) {
+    return (
+      `MIME type "${mimeType}" is not allowed. ` +
+      `Accepted: ${uploadConfig.allowedMimeTypes.join(', ')}`
+    );
+  }
+
+  return null;
+}
+
+function onceSender(res) {
+  let sent = false;
+
+  return {
+    sendOnce(status, body) {
+      if (sent) return;
+      sent = true;
+      res.status(status).json(body);
+    },
+    sent() {
+      return sent;
+    },
+  };
+}
 
 router.post('/stream', (req, res) => {
   const contentLength = parseInt(
@@ -18,37 +66,28 @@ router.post('/stream', (req, res) => {
     10
   );
 
+  const uploadId = crypto.randomUUID();
+  const { sendOnce, sent } = onceSender(res);
+
   let bb;
 
   try {
     bb = busboy({
       headers: req.headers,
-      limits: {
-        files: 1,
-        fileSize: 10 * 1024 * 1024 * 1024
-      }
+      highWaterMark: uploadConfig.busboy.highWaterMark,
+      limits: uploadConfig.busboy.limits,
     });
   } catch (err) {
-    return res.status(400).json({
+    return sendOnce(400, {
       error: 'Invalid multipart request',
-      detail: err.message
+      detail: err.message,
     });
   }
-
-  const uploadId = crypto.randomUUID();
 
   let originalName = 'unknown';
   let mimeType = 'application/octet-stream';
-  let bytesReceived = 0;
   let diskFilePath = null;
-  let responded = false;
-
-  function sendOnce(status, body) {
-    if (responded) return;
-
-    responded = true;
-    res.status(status).json(body);
-  }
+  let fileReceived = false;
 
   let pipelineResolve;
   let pipelineReject;
@@ -59,65 +98,52 @@ router.post('/stream', (req, res) => {
   });
 
   bb.on('file', (fieldname, fileStream, info) => {
-    originalName = info.filename || 'upload';
+    fileReceived = true;
+
+    originalName = path
+      .basename(info.filename || 'upload')
+      .replace(/\\/g, '/');
+
     mimeType = info.mimeType || 'application/octet-stream';
+
+    const typeError = validateFileType(originalName, mimeType);
+
+    if (typeError) {
+      fileStream.resume();
+
+      pipelineReject(
+        Object.assign(new Error(typeError), {
+          code: 'INVALID_TYPE',
+        })
+      );
+
+      return;
+    }
 
     const ext =
       path
-        .extname(path.basename(originalName))
+        .extname(originalName)
         .replace(/[^.a-zA-Z0-9]/g, '') || '';
 
     diskFilePath = path.join(
-      UPLOAD_DIR,
+      uploadConfig.uploadDir,
       `${uploadId}${ext}`
     );
 
     console.log(
-      `[Upload] START id=${uploadId} file="${originalName}" mime=${mimeType} dest="${diskFilePath}"`
+      `[Upload] START id=${uploadId} ` +
+        `file="${originalName}" ` +
+        `mime=${mimeType} ` +
+        `dest="${diskFilePath}" ` +
+        `contentLength=${contentLength || 'unknown'}`
     );
 
-    const progressTransform = new Transform({
-      transform(chunk, encoding, callback) {
-        bytesReceived += chunk.length;
-
-        if (bytesReceived % (5 * 1024 * 1024) < chunk.length) {
-          const percentage =
-            contentLength > 0
-              ? ((bytesReceived / contentLength) * 100).toFixed(1)
-              : '?';
-
-          console.log(
-            `[Upload] PROGRESS id=${uploadId} ${bytesReceived}B (${percentage}%)`
-          );
-        }
-
-        this.push(chunk);
-        callback();
-      }
+    initProgress(uploadId, {
+      originalName,
+      mimeType,
+      contentLength,
+      diskPath: diskFilePath,
     });
-
-    const writeStream = fs.createWriteStream(diskFilePath);
-
-    pipeline(
-      fileStream,
-      progressTransform,
-      writeStream
-    )
-      .then(() => {
-        console.log(
-          `[Upload] DONE id=${uploadId} bytes=${bytesReceived} path="${diskFilePath}"`
-        );
-
-        pipelineResolve({ success: true });
-      })
-      .catch((err) => {
-        console.error(
-          `[Upload] PIPELINE ERROR id=${uploadId}:`,
-          err.message
-        );
-
-        pipelineReject(err);
-      });
 
     fileStream.on('limit', () => {
       console.warn(
@@ -129,22 +155,71 @@ router.post('/stream', (req, res) => {
       pipelineReject(
         Object.assign(
           new Error('File size limit exceeded'),
-          { code: 'LIMIT_FILE_SIZE' }
+          {
+            code: 'LIMIT_FILE_SIZE',
+          }
         )
       );
+    });
+
+    pipeFileToDisk({
+      fileStream,
+      destPath: diskFilePath,
+      uploadId,
+      contentLength,
+    })
+      .then((result) => {
+        pipelineResolve(result);
+      })
+      .catch((err) => {
+        pipelineReject(err);
+      });
+  });
+
+  bb.on('filesLimit', () => {
+    pipelineReject(
+      Object.assign(
+        new Error('Only one file is allowed per upload'),
+        {
+          code: 'LIMIT_FILE_COUNT',
+        }
+      )
+    );
+  });
+
+  bb.on('error', async (err) => {
+    console.error(
+      `[Upload] BUSBOY ERROR id=${uploadId}: ${err.message}`
+    );
+
+    finalizeProgress(
+      uploadId,
+      'error',
+      err.message
+    );
+
+    await cleanupFile(diskFilePath);
+
+    sendOnce(500, {
+      error: 'Multipart parsing error',
+      uploadId,
+      detail: err.message,
     });
   });
 
   bb.on('finish', async () => {
-    if (diskFilePath === null) {
+    if (!fileReceived) {
       return sendOnce(400, {
         error: 'No file field found in multipart request',
-        uploadId
+        uploadId,
       });
     }
 
     try {
-      await pipelinePromise;
+      const { bytesReceived } =
+        await pipelinePromise;
+
+      finalizeProgress(uploadId, 'done');
 
       sendOnce(200, {
         success: true,
@@ -152,128 +227,175 @@ router.post('/stream', (req, res) => {
         originalName,
         mimeType,
         bytesReceived,
-        contentLength: contentLength || null,
-        path: diskFilePath,
-        message: 'File streamed to disk successfully'
+        contentLength:
+          contentLength > 0
+            ? contentLength
+            : null,
+        diskPath: diskFilePath,
+        message:
+          'File streamed to disk successfully',
       });
     } catch (err) {
-      safeUnlink(diskFilePath);
+      finalizeProgress(
+        uploadId,
+        'error',
+        err.message
+      );
+
+      await cleanupFile(diskFilePath);
 
       if (err.code === 'LIMIT_FILE_SIZE') {
-        sendOnce(413, {
-          error: 'File exceeds maximum allowed size (10 GB)',
-          uploadId
-        });
-      } else {
-        sendOnce(500, {
-          error: 'Stream pipeline failed',
+        return sendOnce(413, {
+          error:
+            'File exceeds maximum allowed size (10 GB)',
           uploadId,
-          detail: err.message
+          detail: err.message,
         });
       }
+
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return sendOnce(400, {
+          error:
+            'Only one file is allowed per upload',
+          uploadId,
+        });
+      }
+
+      if (err.code === 'INVALID_TYPE') {
+        return sendOnce(415, {
+          error: 'Unsupported file type',
+          uploadId,
+          detail: err.message,
+        });
+      }
+
+      sendOnce(500, {
+        error: 'Stream pipeline failed',
+        uploadId,
+        detail: err.message,
+      });
     }
   });
 
-  bb.on('error', (err) => {
-    console.error(
-      `[Upload] BUSBOY ERROR id=${uploadId}:`,
-      err.message
-    );
-
-    safeUnlink(diskFilePath);
-
-    sendOnce(500, {
-      error: 'Multipart parsing error',
-      uploadId,
-      detail: err.message
-    });
-  });
-
   async function handleDisconnect(reason) {
-    const raceResult = await Promise.race([
+    if (sent()) return;
+
+    const result = await Promise.race([
       pipelinePromise
         .then(() => 'done')
         .catch(() => 'error'),
 
       new Promise((resolve) => {
-        setTimeout(() => resolve('timeout'), 100);
-      })
+        setTimeout(
+          () => resolve('timeout'),
+          150
+        );
+      }),
     ]);
 
-    if (raceResult === 'done') {
-      return;
-    }
+    if (result === 'done') return;
 
     console.warn(
-      `[Upload] ${reason} id=${uploadId} raceResult=${raceResult}`
+      `[Upload] ${reason} id=${uploadId} ` +
+        `(pipelineState=${result})`
     );
 
-    safeUnlink(diskFilePath);
+    finalizeProgress(
+      uploadId,
+      'error',
+      `Client disconnected: ${reason}`
+    );
+
+    await cleanupFile(diskFilePath);
   }
 
   req.on('aborted', () => {
-    handleDisconnect('ABORTED by client');
+    handleDisconnect('CLIENT_ABORTED');
   });
 
   req.on('close', () => {
-    if (!responded) {
-      handleDisconnect('CONNECTION CLOSED prematurely');
-    }
+    handleDisconnect('CONNECTION_CLOSED');
   });
 
   req.pipe(bb);
 });
 
-router.get('/status/:uploadId', (req, res) => {
+router.get('/progress/:uploadId', (req, res) => {
   const { uploadId } = req.params;
-
-  const UUID_RE =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   if (!UUID_RE.test(uploadId)) {
     return res.status(400).json({
-      error: 'Invalid uploadId format'
+      error: 'Invalid uploadId format',
     });
   }
 
-  const files = fs
-    .readdirSync(UPLOAD_DIR)
-    .filter((file) => file.startsWith(uploadId));
+  const entry = progressStore.get(uploadId);
+
+  if (!entry) {
+    return res.status(404).json({
+      error:
+        'Upload not found — it may have never started',
+      uploadId,
+    });
+  }
+
+  return res.json(entry);
+});
+
+router.get('/status/:uploadId', (req, res) => {
+  const { uploadId } = req.params;
+
+  if (!UUID_RE.test(uploadId)) {
+    return res.status(400).json({
+      error: 'Invalid uploadId format',
+    });
+  }
+
+  const entry = progressStore.get(uploadId);
+
+  if (entry && entry.status !== 'done') {
+    return res.json({
+      uploadId,
+      exists: false,
+      ready: false,
+      status: entry.status,
+      bytesReceived: entry.bytesReceived,
+      message: 'Upload still in progress',
+    });
+  }
+
+  let files;
+
+  try {
+    files = fs
+      .readdirSync(uploadConfig.uploadDir)
+      .filter((file) => file.startsWith(uploadId));
+  } catch {
+    files = [];
+  }
 
   if (files.length === 0) {
     return res.status(404).json({
       error: 'Upload not found',
-      uploadId
+      uploadId,
     });
   }
 
-  const filePath = path.join(UPLOAD_DIR, files[0]);
+  const filePath = path.join(
+    uploadConfig.uploadDir,
+    files[0]
+  );
+
   const stat = fs.statSync(filePath);
 
   return res.json({
     uploadId,
     exists: true,
+    ready: true,
     diskPath: filePath,
     diskBytes: stat.size,
-    lastModified: stat.mtime
+    lastModified: stat.mtime,
   });
 });
-
-function safeUnlink(filePath) {
-  if (!filePath) return;
-
-  fs.unlink(filePath, (err) => {
-    if (err && err.code !== 'ENOENT') {
-      console.error(
-        `[Cleanup] Failed to remove "${filePath}":`,
-        err.message
-      );
-    } else if (!err) {
-      console.log(
-        `[Cleanup] Removed partial file: "${filePath}"`
-      );
-    }
-  });
-}
 
 module.exports = router;
