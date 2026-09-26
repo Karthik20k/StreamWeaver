@@ -6,6 +6,7 @@ export function MappingJsonViewerModal({
   isOpen,
   onClose,
   mappings = {},
+  transformations = {},
   activeSchema,
   stats
 }) {
@@ -17,9 +18,11 @@ export function MappingJsonViewerModal({
     schemaId: activeSchema?.id || 'default_schema',
     targetCollection: activeSchema?.targetCollection || 'target_collection',
     mappingRules: mappings,
+    transformRules: transformations,
     validation: {
       allRequiredMapped: stats?.isAllRequiredMapped || false,
       mappedPairsCount: Object.keys(mappings).length,
+      rulesConfiguredCount: Object.keys(transformations).length,
       missingRequiredFields: stats?.missingRequiredFields?.map((f) => f.name) || []
     },
     timestamp: new Date().toISOString()

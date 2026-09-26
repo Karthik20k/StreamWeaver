@@ -5,6 +5,7 @@ import { MappingHeader } from './MappingHeader';
 import { MappingSummaryBar } from './MappingSummaryBar';
 import { SourceColumnsPanel } from './SourceColumnsPanel';
 import { TargetFieldsPanel } from './TargetFieldsPanel';
+import { TransformationDrawer } from './TransformationDrawer';
 import { MappingJsonViewerModal } from './MappingJsonViewerModal';
 import { useSchemaMapping } from '../../hooks/useSchemaMapping';
 import { Button } from '../common/Button';
@@ -25,6 +26,11 @@ export function SchemaMappingStage({
   onProceedToIngest
 }) {
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
+  const [activeDrawer, setActiveDrawer] = useState({
+    isOpen: false,
+    sourceColumn: null,
+    targetField: null
+  });
 
   // Extract source headers from metadata or preview rows
   const sourceHeaders = useMemo(() => {
@@ -58,12 +64,16 @@ export function SchemaMappingStage({
     targetFields,
     mappings,
     reverseMappings,
+    transformations,
     setSelectedSchemaId,
     setMapping,
     removeMapping,
     removeMappingByTarget,
     clearAllMappings,
     autoMapAll,
+    setTransformation,
+    resetTransformation,
+    getTransformation,
     stats,
     exportConfig
   } = useSchemaMapping({
@@ -71,6 +81,25 @@ export function SchemaMappingStage({
     sampleRows: parsedRows,
     initialSchemaId
   });
+
+  const handleOpenRules = (sourceCol) => {
+    const tgtName = mappings[sourceCol];
+    if (!tgtName) return;
+    const targetDef = targetFields.find((f) => f.name === tgtName);
+    setActiveDrawer({
+      isOpen: true,
+      sourceColumn: sourceCol,
+      targetField: targetDef || { name: tgtName, type: 'String', required: false }
+    });
+  };
+
+  const handleCloseDrawer = () => {
+    setActiveDrawer({
+      isOpen: false,
+      sourceColumn: null,
+      targetField: null
+    });
+  };
 
   const handleProceed = () => {
     const compiledConfig = exportConfig();
@@ -101,13 +130,15 @@ export function SchemaMappingStage({
 
       {/* Primary Split-Column Mapping Workspace */}
       <div className="mapping-split-container">
-        {/* Left Panel: CSV Source Columns */}
+        {/* Left Panel: CSV Source Columns with Drag & Drop and Rule Buttons */}
         <SourceColumnsPanel
           sourceHeaders={sourceHeaders}
           sampleRows={parsedRows}
           mappings={mappings}
+          transformations={transformations}
           targetFields={targetFields}
           onSetMapping={setMapping}
+          onOpenRules={handleOpenRules}
         />
 
         {/* Center Connection Pipeline Bridge */}
@@ -119,14 +150,16 @@ export function SchemaMappingStage({
           <div className="bridge-pipe-line" />
         </div>
 
-        {/* Right Panel: Target Database Fields */}
+        {/* Right Panel: Target Database Fields with Drop Zones and Rule Buttons */}
         <TargetFieldsPanel
           targetFields={targetFields}
           activeSchema={activeSchema}
           sourceHeaders={sourceHeaders}
           reverseMappings={reverseMappings}
+          transformations={transformations}
           onSetMapping={setMapping}
           onRemoveMappingByTarget={removeMappingByTarget}
+          onOpenRules={handleOpenRules}
         />
       </div>
 
@@ -181,11 +214,26 @@ export function SchemaMappingStage({
         </div>
       </div>
 
-      {/* Active Mapping JSON Inspector Modal */}
+      {/* Transformation Drawer (Slide-Over for Rule Selection) */}
+      <TransformationDrawer
+        isOpen={activeDrawer.isOpen}
+        onClose={handleCloseDrawer}
+        sourceColumn={activeDrawer.sourceColumn}
+        targetField={activeDrawer.targetField}
+        sampleRows={parsedRows}
+        currentRules={
+          activeDrawer.sourceColumn ? getTransformation(activeDrawer.sourceColumn) : {}
+        }
+        onSaveRules={setTransformation}
+        onResetRules={resetTransformation}
+      />
+
+      {/* Active Mapping & Transformations JSON Inspector Modal */}
       <MappingJsonViewerModal
         isOpen={isJsonModalOpen}
         onClose={() => setIsJsonModalOpen(false)}
         mappings={mappings}
+        transformations={transformations}
         activeSchema={activeSchema}
         stats={stats}
       />

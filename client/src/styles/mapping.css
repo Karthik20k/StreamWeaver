@@ -797,3 +797,397 @@
   gap: 0.75rem;
   background: #0d1322;
 }
+
+/* --------------------------------------------------------------------------
+   Day 2: Drag and Drop & Rule Interaction Styles
+   -------------------------------------------------------------------------- */
+.drag-handle-grip {
+  color: var(--text-muted);
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.drag-handle-grip:hover {
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.1);
+}
+
+.drag-handle-grip:active {
+  cursor: grabbing;
+}
+
+.panel-drag-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.source-card.is-dragging,
+.target-card.is-dragging {
+  opacity: 0.45;
+  border-style: dashed;
+  transform: scale(0.98);
+}
+
+.source-card.is-drop-active {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.35) !important;
+  background: rgba(6, 182, 212, 0.08) !important;
+}
+
+.target-card.is-drop-active {
+  border-color: var(--accent-purple) !important;
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.35) !important;
+  background: rgba(139, 92, 246, 0.08) !important;
+}
+
+/* Rule Config Pill Button */
+.rules-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: var(--accent-cyan);
+  border-radius: 5px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.rules-pill-btn:hover {
+  background: rgba(6, 182, 212, 0.22);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.25);
+  transform: translateY(-1px);
+}
+
+.rules-pill-btn.rules-pill-purple {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: var(--accent-purple);
+}
+
+.rules-pill-btn.rules-pill-purple:hover {
+  background: rgba(139, 92, 246, 0.22);
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
+}
+
+/* --------------------------------------------------------------------------
+   Transformation Drawer (Slide-Over & Rules Selection)
+   -------------------------------------------------------------------------- */
+.drawer-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  z-index: 120;
+  display: flex;
+  justify-content: flex-end;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.drawer-panel {
+  width: 100%;
+  max-width: 560px;
+  height: 100vh;
+  background: #090e1c;
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -15px 0 40px rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.drawer-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: #0d1322;
+}
+
+.drawer-title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.drawer-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid var(--border-glow-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.drawer-title-group h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+.drawer-mapping-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.source-col-pill {
+  font-size: 0.76rem;
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.target-col-pill {
+  font-size: 0.76rem;
+  font-family: var(--font-mono);
+  color: var(--accent-purple);
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+/* Live Simulation Box */
+.drawer-preview-box {
+  background: #060a14;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 1.1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.preview-box-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-cyan);
+}
+
+.simulation-rows-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.simulation-row {
+  display: grid;
+  grid-template-columns: 1fr 20px 1fr auto;
+  align-items: center;
+  gap: 0.65rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  padding: 0.55rem 0.75rem;
+}
+
+.sim-col {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sim-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+}
+
+.sim-val {
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.sim-val.is-valid {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.sim-val.is-invalid {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+.sim-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sim-steps-pill {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  color: var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 4px;
+  padding: 0.2rem 0.45rem;
+  white-space: nowrap;
+}
+
+/* Drawer Body & Rule Sections */
+.drawer-body {
+  flex: 1;
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.rule-section {
+  background: rgba(13, 19, 34, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.rule-section-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-main);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 0.5rem;
+}
+
+.rule-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rule-checkbox {
+  margin-top: 0.2rem;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+.rule-checkbox-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.rule-checkbox-label strong {
+  font-size: 0.85rem;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.rule-checkbox-label span {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.rule-select-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rule-select-field label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rule-dropdown {
+  background: #080c18;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-main);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.84rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.rule-dropdown:focus {
+  border-color: var(--accent-cyan);
+}
+
+.rule-text-input {
+  background: #080c18;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-main);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.84rem;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.rule-text-input:focus {
+  border-color: var(--accent-cyan);
+}
+
+.rule-input-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* Drawer Footer */
+.drawer-footer {
+  padding: 1.1rem 1.5rem;
+  border-top: 1px solid var(--border-subtle);
+  background: #0d1322;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+

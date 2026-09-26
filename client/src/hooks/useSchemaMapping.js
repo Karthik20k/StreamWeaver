@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { PREDEFINED_TARGET_SCHEMAS, calculateAutoMappings } from '../utils/targetSchemas';
+import { getDefaultRuleForTarget, DEFAULT_TRANSFORMATION_RULE } from '../utils/transformationRules';
 
 export function useSchemaMapping({
   sourceHeaders = [],
@@ -10,6 +11,7 @@ export function useSchemaMapping({
   const [schemas, setSchemas] = useState(PREDEFINED_TARGET_SCHEMAS);
   const [selectedSchemaId, setSelectedSchemaId] = useState(initialSchemaId);
   const [mappings, setMappings] = useState({});
+  const [transformations, setTransformations] = useState({});
   const [isLoadingSchemas, setIsLoadingSchemas] = useState(false);
   const [apiError, setApiError] = useState(null);
 
@@ -28,10 +30,8 @@ export function useSchemaMapping({
           }
         }
       } catch (err) {
-        // Dev 2 server may not be running yet or running on another port in dev
         if (isMounted) {
           setApiError(err.message);
-          // Keep predefined schemas as stable fallback
         }
       } finally {
         if (isMounted) {
@@ -66,15 +66,33 @@ export function useSchemaMapping({
     return rev;
   }, [mappings]);
 
-  // Automatically seed initial mappings if headers match current target schema
+  // Helper to get target field definition by name
+  const getTargetFieldByName = useCallback((fieldName) => {
+    return targetFields.find((f) => f.name === fieldName) || null;
+  }, [targetFields]);
+
+  // Automatically seed initial mappings and default transformation rules if empty
   useEffect(() => {
     if (sourceHeaders && sourceHeaders.length > 0 && targetFields && targetFields.length > 0) {
-      // If no mappings currently set, perform initial auto-mapping
-      setMappings((prev) => {
-        if (Object.keys(prev).length === 0) {
-          return calculateAutoMappings(sourceHeaders, targetFields);
+      setMappings((prevMappings) => {
+        if (Object.keys(prevMappings).length === 0) {
+          const initial = calculateAutoMappings(sourceHeaders, targetFields);
+          
+          // Seed transformation rules for automatically mapped fields
+          setTransformations((prevTransforms) => {
+            const nextTransforms = { ...prevTransforms };
+            for (const [srcCol, tgtName] of Object.entries(initial)) {
+              if (!nextTransforms[srcCol]) {
+                const targetDef = targetFields.find((f) => f.name === tgtName);
+                nextTransforms[srcCol] = getDefaultRuleForTarget(targetDef);
+              }
+            }
+            return nextTransforms;
+          });
+
+          return initial;
         }
-        return prev;
+        return prevMappings;
       });
     }
   }, [sourceHeaders, targetFields]);
@@ -86,9 +104,14 @@ export function useSchemaMapping({
     setMappings((prev) => {
       const next = { ...prev };
 
-      // If assigning to empty/null, remove mapping
+      // If assigning to empty/null, remove mapping and rule
       if (!targetField) {
         delete next[sourceCol];
+        setTransformations((tPrev) => {
+          const tNext = { ...tPrev };
+          delete tNext[sourceCol];
+          return tNext;
+        });
         return next;
       }
 
@@ -96,18 +119,41 @@ export function useSchemaMapping({
       for (const [src, tgt] of Object.entries(next)) {
         if (tgt === targetField && src !== sourceCol) {
           delete next[src];
+          setTransformations((tPrev) => {
+            const tNext = { ...tPrev };
+            delete tNext[src];
+            return tNext;
+          });
         }
       }
 
       next[sourceCol] = targetField;
+
+      // Assign default transformation rules tailored to target field type
+      setTransformations((tPrev) => {
+        if (!tPrev[sourceCol]) {
+          const targetDef = getTargetFieldByName(targetField);
+          return {
+            ...tPrev,
+            [sourceCol]: getDefaultRuleForTarget(targetDef)
+          };
+        }
+        return tPrev;
+      });
+
       return next;
     });
-  }, []);
+  }, [getTargetFieldByName]);
 
   // Remove mapping for a specific source column
   const removeMapping = useCallback((sourceCol) => {
     if (!sourceCol) return;
     setMappings((prev) => {
+      const next = { ...prev };
+      delete next[sourceCol];
+      return next;
+    });
+    setTransformations((prev) => {
       const next = { ...prev };
       delete next[sourceCol];
       return next;
@@ -122,33 +168,88 @@ export function useSchemaMapping({
       for (const [src, tgt] of Object.entries(next)) {
         if (tgt === targetField) {
           delete next[src];
+          setTransformations((tPrev) => {
+            const tNext = { ...tPrev };
+            delete tNext[src];
+            return tNext;
+          });
         }
       }
       return next;
     });
   }, []);
 
-  // Clear all current active mappings
+  // Clear all current active mappings and rules
   const clearAllMappings = useCallback(() => {
     setMappings({});
+    setTransformations({});
   }, []);
 
-  // Trigger automated matching algorithm
+  // Trigger automated matching algorithm with smart defaults
   const autoMapAll = useCallback(() => {
     const auto = calculateAutoMappings(sourceHeaders, targetFields);
     setMappings(auto);
+
+    // Initialize rules for newly auto-mapped fields
+    const nextTransforms = {};
+    for (const [srcCol, tgtName] of Object.entries(auto)) {
+      const targetDef = targetFields.find((f) => f.name === tgtName);
+      nextTransforms[srcCol] = getDefaultRuleForTarget(targetDef);
+    }
+    setTransformations(nextTransforms);
     return auto;
   }, [sourceHeaders, targetFields]);
+
+  // Update transformation rules for a specific source column
+  const setTransformation = useCallback((sourceCol, ruleUpdates) => {
+    if (!sourceCol) return;
+    setTransformations((prev) => {
+      const existing = prev[sourceCol] || DEFAULT_TRANSFORMATION_RULE;
+      return {
+        ...prev,
+        [sourceCol]: {
+          ...existing,
+          ...ruleUpdates
+        }
+      };
+    });
+  }, []);
+
+  // Reset rules for a column back to default
+  const resetTransformation = useCallback((sourceCol) => {
+    const tgtName = mappings[sourceCol];
+    const targetDef = getTargetFieldByName(tgtName);
+    const defaults = getDefaultRuleForTarget(targetDef);
+    setTransformations((prev) => ({
+      ...prev,
+      [sourceCol]: defaults
+    }));
+  }, [mappings, getTargetFieldByName]);
+
+  // Get active transformation rule for a source column
+  const getTransformation = useCallback((sourceCol) => {
+    if (transformations[sourceCol]) {
+      return transformations[sourceCol];
+    }
+    const tgtName = mappings[sourceCol];
+    const targetDef = getTargetFieldByName(tgtName);
+    return getDefaultRuleForTarget(targetDef);
+  }, [transformations, mappings, getTargetFieldByName]);
 
   // When changing target schema, clean up invalid mappings
   const handleSelectSchema = useCallback((schemaId) => {
     setSelectedSchemaId(schemaId);
     const targetSchema = schemas.find((s) => s.id === schemaId);
     if (targetSchema) {
-      const validTargetNames = new Set(targetSchema.fields.map((f) => f.name));
-      // Re-map with new schema
       const auto = calculateAutoMappings(sourceHeaders, targetSchema.fields);
       setMappings(auto);
+
+      const nextTransforms = {};
+      for (const [srcCol, tgtName] of Object.entries(auto)) {
+        const targetDef = targetSchema.fields.find((f) => f.name === tgtName);
+        nextTransforms[srcCol] = getDefaultRuleForTarget(targetDef);
+      }
+      setTransformations(nextTransforms);
     }
   }, [schemas, sourceHeaders]);
 
@@ -171,6 +272,8 @@ export function useSchemaMapping({
       ? Math.round((mappedCount / totalTarget) * 100) 
       : 0;
 
+    const totalRulesConfigured = Object.keys(transformations).length;
+
     return {
       totalSource,
       totalTarget,
@@ -181,9 +284,10 @@ export function useSchemaMapping({
       unmappedRequiredCount: missingRequired.length,
       missingRequiredFields: missingRequired,
       isAllRequiredMapped,
-      completionPercentage
+      completionPercentage,
+      totalRulesConfigured
     };
-  }, [sourceHeaders, targetFields, mappings]);
+  }, [sourceHeaders, targetFields, mappings, transformations]);
 
   // Export clean config payload for Day 4 upload and Dev 1 transformer
   const exportConfig = useCallback(() => {
@@ -191,6 +295,7 @@ export function useSchemaMapping({
       schemaId: activeSchema.id,
       targetCollection: activeSchema.targetCollection,
       mappingRules: { ...mappings },
+      transformRules: { ...transformations },
       metadata: {
         totalSourceHeaders: sourceHeaders.length,
         totalTargetFields: targetFields.length,
@@ -199,7 +304,7 @@ export function useSchemaMapping({
         generatedAt: new Date().toISOString()
       }
     };
-  }, [activeSchema, mappings, sourceHeaders, targetFields, stats]);
+  }, [activeSchema, mappings, transformations, sourceHeaders, targetFields, stats]);
 
   return {
     schemas,
@@ -208,6 +313,7 @@ export function useSchemaMapping({
     targetFields,
     mappings,
     reverseMappings,
+    transformations,
     isLoadingSchemas,
     apiError,
     setSelectedSchemaId: handleSelectSchema,
@@ -216,6 +322,9 @@ export function useSchemaMapping({
     removeMappingByTarget,
     clearAllMappings,
     autoMapAll,
+    setTransformation,
+    resetTransformation,
+    getTransformation,
     stats,
     exportConfig
   };

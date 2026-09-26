@@ -1,16 +1,27 @@
 import React, { useState, useMemo } from 'react';
-import { SearchIcon, LayersIcon, ArrowRightIcon } from '../common/Icons';
+import { 
+  SearchIcon, 
+  LayersIcon, 
+  ArrowRightIcon, 
+  GripVerticalIcon, 
+  Settings2Icon 
+} from '../common/Icons';
 import { inferColumnTypes } from '../../utils/columnAutoSizer';
+import { describeActiveRules } from '../../utils/transformationRules';
 
 export function SourceColumnsPanel({
   sourceHeaders = [],
   sampleRows = [],
   mappings = {},
+  transformations = {},
   targetFields = [],
-  onSetMapping
+  onSetMapping,
+  onOpenRules
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState('all'); // 'all' | 'mapped' | 'unmapped'
+  const [draggedCol, setDraggedCol] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
 
   // Infer column types based on sample rows
   const inferredTypes = useMemo(() => {
@@ -59,6 +70,39 @@ export function SourceColumnsPanel({
   const mappedCount = Object.keys(mappings).length;
   const unmappedCount = Math.max(0, sourceHeaders.length - mappedCount);
 
+  // Drag event handlers
+  const handleDragStart = (e, colName) => {
+    setDraggedCol(colName);
+    e.dataTransfer.setData('text/streamweaver-source', colName);
+    e.dataTransfer.setData('text/plain', colName);
+    e.dataTransfer.effectAllowed = 'copyMove';
+  };
+
+  const handleDragEnd = () => {
+    setDraggedCol(null);
+    setDragOverCol(null);
+  };
+
+  const handleDragOver = (e, colName) => {
+    if (e.dataTransfer.types.includes('text/streamweaver-target')) {
+      e.preventDefault();
+      setDragOverCol(colName);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverCol(null);
+  };
+
+  const handleDrop = (e, colName) => {
+    e.preventDefault();
+    setDragOverCol(null);
+    const targetFieldName = e.dataTransfer.getData('text/streamweaver-target');
+    if (targetFieldName) {
+      onSetMapping(colName, targetFieldName);
+    }
+  };
+
   return (
     <div className="mapping-panel">
       <div className="panel-header-row">
@@ -67,6 +111,7 @@ export function SourceColumnsPanel({
           <h3>CSV Source Columns</h3>
           <span className="panel-badge source-badge">{sourceHeaders.length} Detected</span>
         </div>
+        <span className="panel-drag-hint">Drag column to target field &rarr;</span>
       </div>
 
       <div className="panel-filter-bar">
@@ -111,18 +156,34 @@ export function SourceColumnsPanel({
             const type = inferredTypes[colName] || 'str';
             const mappedTarget = mappings[colName] || '';
             const samples = columnSamples[colName] || [];
+            const isDragging = draggedCol === colName;
+            const isDropActive = dragOverCol === colName;
+
+            const rules = transformations[colName] || {};
+            const activeRuleTags = describeActiveRules(rules);
 
             return (
               <div
                 key={colName}
-                className={`source-card ${mappedTarget ? 'is-mapped' : ''}`}
+                draggable={true}
+                onDragStart={(e) => handleDragStart(e, colName)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleDragOver(e, colName)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, colName)}
+                className={`source-card ${mappedTarget ? 'is-mapped' : ''} ${isDragging ? 'is-dragging' : ''} ${isDropActive ? 'is-drop-active' : ''}`}
               >
                 <div className="source-card-top">
                   <div className="source-col-name-group">
+                    <span className="drag-handle-grip" title="Drag to map to a target field">
+                      <GripVerticalIcon size={15} />
+                    </span>
                     <span className="col-idx-tag">#{idx + 1}</span>
                     <span className="source-col-name" title={colName}>{colName}</span>
                   </div>
-                  <span className={`type-tag ${type}`}>{type}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span className={`type-tag ${type}`}>{type}</span>
+                  </div>
                 </div>
 
                 {samples.length > 0 && (
@@ -136,24 +197,38 @@ export function SourceColumnsPanel({
                 )}
 
                 <div className="source-card-binding">
-                  <span className="binding-label">
-                    <ArrowRightIcon size={13} className="text-cyan" />
-                    Target Field:
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span className="binding-label">
+                      <ArrowRightIcon size={13} className="text-cyan" />
+                      Target:
+                    </span>
 
-                  <select
-                    className={`target-select-inline ${mappedTarget ? 'has-mapping' : ''}`}
-                    value={mappedTarget}
-                    onChange={(e) => onSetMapping(colName, e.target.value)}
-                    aria-label={`Target field for ${colName}`}
-                  >
-                    <option value="">-- Select Target Field --</option>
-                    {targetFields.map((tf) => (
-                      <option key={tf.name} value={tf.name}>
-                        {tf.name} ({tf.type}){tf.required ? ' *Required' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <select
+                      className={`target-select-inline ${mappedTarget ? 'has-mapping' : ''}`}
+                      value={mappedTarget}
+                      onChange={(e) => onSetMapping(colName, e.target.value)}
+                      aria-label={`Target field for ${colName}`}
+                    >
+                      <option value="">-- Drop or Select Field --</option>
+                      {targetFields.map((tf) => (
+                        <option key={tf.name} value={tf.name}>
+                          {tf.name} ({tf.type}){tf.required ? ' *Required' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {mappedTarget && onOpenRules && (
+                    <button
+                      type="button"
+                      className="rules-pill-btn"
+                      onClick={() => onOpenRules(colName)}
+                      title="Configure transformation & sanitization rules"
+                    >
+                      <Settings2Icon size={13} className="text-cyan" />
+                      <span>{activeRuleTags.slice(0, 2).join(' · ') || 'Rules'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
