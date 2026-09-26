@@ -5,7 +5,8 @@ import {
   ZapIcon, 
   CloudUploadIcon, 
   ActivityIcon,
-  XIcon
+  XIcon,
+  SlidersIcon
 } from '../common/Icons';
 import { Button } from '../common/Button';
 import { formatBytes } from '../../utils/fileHelpers';
@@ -19,6 +20,7 @@ export function PreviewToolbar({
   onSearchChange,
   onOpenBenchmark,
   onOpenUpload,
+  onProceedToMapping,
   onBackToUpload
 }) {
   const fps = useFPSMonitor();
@@ -113,13 +115,26 @@ export function PreviewToolbar({
         </Button>
 
         <Button
-          variant="primary"
+          variant="secondary"
           size="sm"
           icon={CloudUploadIcon}
           onClick={onOpenUpload}
+          title="Direct stream to backend"
         >
-          Stream to Backend
+          Direct Stream
         </Button>
+
+        {onProceedToMapping && (
+          <Button
+            variant="primary"
+            size="sm"
+            icon={SlidersIcon}
+            onClick={onProceedToMapping}
+            title="Configure Schema Mapping & Rules"
+          >
+            Schema Mapping &rarr;
+          </Button>
+        )}
 
         <Button
           variant="ghost"

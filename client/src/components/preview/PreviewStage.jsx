@@ -10,7 +10,8 @@ export function PreviewStage({
   file,
   metadata,
   parsedRows = [],
-  onBackToUpload
+  onBackToUpload,
+  onProceedToMapping
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isBenchmarkOpen, setIsBenchmarkOpen] = useState(false);
@@ -32,6 +33,7 @@ export function PreviewStage({
         onSearchChange={setSearchQuery}
         onOpenBenchmark={() => setIsBenchmarkOpen(true)}
         onOpenUpload={() => setIsUploadOpen(true)}
+        onProceedToMapping={onProceedToMapping}
         onBackToUpload={onBackToUpload}
       />
 
