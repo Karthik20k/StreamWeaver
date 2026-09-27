@@ -9,7 +9,10 @@
     "test:memory": "node tests/verifyStreamingMemory.js 50",
     "test:memory:large": "node tests/verifyStreamingMemory.js 200",
     "test:1gb": "node tests/verifyStreamingMemory.js 1024",
+    "test": "node tests/verifySchemas.js && node tests/verifyValidationAndDLQ.js && node tests/verifySchemaRoutes.js",
     "test:schemas": "node tests/verifySchemas.js",
+    "test:validation": "node tests/verifyValidationAndDLQ.js",
+    "test:routes": "node tests/verifySchemaRoutes.js",
     "generate:csv": "node tests/generateSyntheticCsv.js"
   },
   "dependencies": {

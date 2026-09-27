@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { validateRow } = require('../pipeline/validationEngine');
 
 /**
  * FieldConstraintSchema:
@@ -16,6 +17,28 @@ const FieldConstraintSchema = new mongoose.Schema(
     },
     defaultValue: {
       type: mongoose.Schema.Types.Mixed,
+      default: undefined
+    },
+    pattern: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    regex: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    min: {
+      type: Number,
+      default: null
+    },
+    max: {
+      type: Number,
+      default: null
+    },
+    allowedValues: {
+      type: [mongoose.Schema.Types.Mixed],
       default: undefined
     }
   },
@@ -103,6 +126,16 @@ const TargetSchemaSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
       index: true
+    },
+    isPredefined: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    category: {
+      type: String,
+      trim: true,
+      default: 'General'
     }
   },
   {
@@ -115,76 +148,15 @@ const TargetSchemaSchema = new mongoose.Schema(
  * Validates and transforms a single record against the defined target schema fields and constraints.
  *
  * @param {Record<string, any>} row - Key-value pair of row data
- * @returns {{ isValid: boolean, errors: string[], sanitized: Record<string, any> }}
+ * @returns {{ isValid: boolean, errors: string[], errorDetails: Array<{field: string, reason: string}>, sanitized: Record<string, any> }}
  */
 TargetSchemaSchema.methods.validateRow = function (row) {
-  const errors = [];
-  const sanitized = {};
-
-  for (const field of this.fields) {
-    const rawVal = row ? row[field.name] : undefined;
-    const isRequired = Boolean(field.constraints && field.constraints.required);
-    const isPresent = rawVal !== undefined && rawVal !== null && rawVal !== '';
-
-    if (isRequired && !isPresent) {
-      errors.push(`Field '${field.name}' is required but was empty or missing.`);
-      continue;
-    }
-
-    if (!isPresent) {
-      if (field.constraints && field.constraints.defaultValue !== undefined) {
-        sanitized[field.name] = field.constraints.defaultValue;
-      }
-      continue;
-    }
-
-    switch (field.type) {
-      case 'String': {
-        sanitized[field.name] = String(rawVal);
-        break;
-      }
-      case 'Number': {
-        const num = Number(rawVal);
-        if (Number.isNaN(num)) {
-          errors.push(`Field '${field.name}' expected Number, received: '${rawVal}'`);
-        } else {
-          sanitized[field.name] = num;
-        }
-        break;
-      }
-      case 'Date': {
-        const date = new Date(rawVal);
-        if (Number.isNaN(date.getTime())) {
-          errors.push(`Field '${field.name}' expected valid Date, received: '${rawVal}'`);
-        } else {
-          sanitized[field.name] = date;
-        }
-        break;
-      }
-      case 'Boolean': {
-        if (typeof rawVal === 'boolean') {
-          sanitized[field.name] = rawVal;
-        } else if (typeof rawVal === 'string') {
-          const lower = rawVal.trim().toLowerCase();
-          if (['true', '1', 'yes'].includes(lower)) sanitized[field.name] = true;
-          else if (['false', '0', 'no'].includes(lower)) sanitized[field.name] = false;
-          else errors.push(`Field '${field.name}' expected Boolean, received: '${rawVal}'`);
-        } else {
-          sanitized[field.name] = Boolean(rawVal);
-        }
-        break;
-      }
-      case 'Mixed':
-      default:
-        sanitized[field.name] = rawVal;
-        break;
-    }
-  }
-
+  const result = validateRow(row, this);
   return {
-    isValid: errors.length === 0,
-    errors,
-    sanitized
+    isValid: result.isValid,
+    errors: result.errors.map(err => err.reason),
+    errorDetails: result.errors,
+    sanitized: result.sanitized
   };
 };
 
