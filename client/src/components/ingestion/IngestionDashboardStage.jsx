@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import '../../styles/ingestion.css';
 
 import { useIngestionStream } from '../../hooks/useIngestionStream';
+import { ErrorAuditDrawer } from './ErrorAuditDrawer';
 import { Button } from '../common/Button';
 import { 
   DatabaseIcon, 
@@ -25,6 +26,7 @@ export function IngestionDashboardStage({
   onProceedToAudit
 }) {
   const [copiedJobId, setCopiedJobId] = useState(false);
+  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
   const terminalEndRef = useRef(null);
 
   const {
@@ -118,6 +120,16 @@ export function IngestionDashboardStage({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={AlertCircleIcon}
+            onClick={() => setIsAuditDrawerOpen(true)}
+            title="Open Dead Letter Queue Error Audit Drawer"
+          >
+            Audit DLQ Errors {errorCount > 0 ? `(${errorCount})` : ''}
+          </Button>
+
           {isProcessing && (
             <Button
               variant="outline"
@@ -237,7 +249,14 @@ export function IngestionDashboardStage({
         </div>
 
         {/* KPI 3: Dynamic Error Counter (DLQ) */}
-        <div className="ingest-kpi-card">
+        <div
+          className="ingest-kpi-card"
+          onClick={() => setIsAuditDrawerOpen(true)}
+          style={{ cursor: 'pointer' }}
+          title="Click to open Dead Letter Queue Error Audit Drawer"
+          role="button"
+          tabIndex={0}
+        >
           <div className="ingest-kpi-icon amber">
             <AlertCircleIcon size={22} />
           </div>
@@ -250,7 +269,7 @@ export function IngestionDashboardStage({
               <span className="ingest-kpi-sub">bad rows</span>
             </div>
             <span className="kpi-sub" style={{ color: errorCount > 0 ? 'var(--accent-amber)' : 'var(--text-muted)' }}>
-              {errorCount > 0 ? 'Routed to Dead Letter Queue' : '0 validation failures'}
+              {errorCount > 0 ? 'Click to Audit DLQ Records' : '0 validation failures'}
             </span>
           </div>
         </div>
@@ -309,13 +328,18 @@ export function IngestionDashboardStage({
 
         {/* Right: Live DLQ Error Feed */}
         <div className="ingest-dlq-card">
-          <div className="dlq-header">
+          <div
+            className="dlq-header"
+            onClick={() => setIsAuditDrawerOpen(true)}
+            style={{ cursor: 'pointer' }}
+            title="Click to open Dead Letter Queue Error Audit Drawer"
+          >
             <div className="dlq-header-title">
               <AlertCircleIcon size={16} className="text-amber" />
               <span>DEAD LETTER QUEUE (DLQ) FEED</span>
             </div>
             <span className="panel-badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-amber)' }}>
-              {errorCount} Isolated
+              {errorCount} Isolated &rarr;
             </span>
           </div>
 
@@ -328,7 +352,13 @@ export function IngestionDashboardStage({
               </div>
             ) : (
               recentErrors.map((err, idx) => (
-                <div key={idx} className="dlq-item-card">
+                <div
+                  key={idx}
+                  className="dlq-item-card"
+                  onClick={() => setIsAuditDrawerOpen(true)}
+                  style={{ cursor: 'pointer' }}
+                  title="Click to inspect this row in Error Audit Drawer"
+                >
                   <div className="dlq-item-top">
                     <span className="dlq-row-tag">Row #{err.rowNumber}</span>
                     <span className="dlq-field-pill">{err.failedField}</span>
@@ -340,6 +370,28 @@ export function IngestionDashboardStage({
           </div>
         </div>
       </div>
+
+      {/* Stream Aborted / Interrupted Banner (UI Hardening State) */}
+      {isAborted && (
+        <div className="audit-state-banner is-warn">
+          <ActivityIcon size={22} className="text-amber" />
+          <div style={{ flex: 1 }}>
+            <span className="banner-title">Streaming Ingestion Aborted</span>
+            <p>
+              Pipeline execution was interrupted by user command. <strong>{rowsProcessed.toLocaleString()} records</strong> were safely processed prior to abortion.
+              You can audit isolated DLQ records or restart the pipeline.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Button variant="secondary" size="sm" onClick={() => setIsAuditDrawerOpen(true)}>
+              Audit DLQ Errors
+            </Button>
+            <Button variant="primary" size="sm" icon={ZapIcon} onClick={() => startIngestion()}>
+              Restart
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* --------------------------------------------------------------------
           5. Completion Celebration Banner
@@ -375,13 +427,29 @@ export function IngestionDashboardStage({
               variant="primary"
               size="md"
               icon={SlidersIcon}
-              onClick={() => onProceedToAudit && onProceedToAudit(jobId)}
+              onClick={() => {
+                setIsAuditDrawerOpen(true);
+                if (onProceedToAudit) onProceedToAudit(jobId);
+              }}
             >
               Review Ingestion & Errors &rarr;
             </Button>
           </div>
         </div>
       )}
+
+      {/* --------------------------------------------------------------------
+          6. Dead Letter Queue (DLQ) Error Audit Drawer (Day 5)
+          -------------------------------------------------------------------- */}
+      <ErrorAuditDrawer
+        isOpen={isAuditDrawerOpen}
+        onClose={() => setIsAuditDrawerOpen(false)}
+        jobId={jobId}
+        targetCollection={mappingConfig?.targetCollection || 'ecommerce_orders'}
+        totalProcessed={rowsProcessed}
+        isStreamActive={isProcessing}
+        streamStatus={status}
+      />
     </div>
   );
 }
