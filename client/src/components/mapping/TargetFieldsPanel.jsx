@@ -1,16 +1,28 @@
 import React, { useState, useMemo } from 'react';
-import { SearchIcon, DatabaseIcon, XIcon, ArrowRightIcon } from '../common/Icons';
+import { 
+  SearchIcon, 
+  DatabaseIcon, 
+  XIcon, 
+  ArrowRightIcon, 
+  GripVerticalIcon, 
+  Settings2Icon 
+} from '../common/Icons';
+import { describeActiveRules } from '../../utils/transformationRules';
 
 export function TargetFieldsPanel({
   targetFields = [],
   activeSchema,
   sourceHeaders = [],
   reverseMappings = {},
+  transformations = {},
   onSetMapping,
-  onRemoveMappingByTarget
+  onRemoveMappingByTarget,
+  onOpenRules
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState('all'); // 'all' | 'required' | 'mapped' | 'unmapped'
+  const [dragOverField, setDragOverField] = useState(null);
+  const [draggedField, setDraggedField] = useState(null);
 
   const filteredFields = useMemo(() => {
     return targetFields.filter((field) => {
@@ -36,6 +48,40 @@ export function TargetFieldsPanel({
   const mappedCount = Object.keys(reverseMappings).length;
   const unmappedCount = Math.max(0, targetFields.length - mappedCount);
 
+  // Drag & Drop handlers
+  const handleDragStart = (e, fieldName) => {
+    setDraggedField(fieldName);
+    e.dataTransfer.setData('text/streamweaver-target', fieldName);
+    e.dataTransfer.setData('text/plain', fieldName);
+    e.dataTransfer.effectAllowed = 'copyMove';
+  };
+
+  const handleDragEnd = () => {
+    setDraggedField(null);
+    setDragOverField(null);
+  };
+
+  const handleDragOver = (e, fieldName) => {
+    if (e.dataTransfer.types.includes('text/streamweaver-source') || e.dataTransfer.types.includes('text/plain')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setDragOverField(fieldName);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverField(null);
+  };
+
+  const handleDrop = (e, fieldName) => {
+    e.preventDefault();
+    setDragOverField(null);
+    const sourceCol = e.dataTransfer.getData('text/streamweaver-source') || e.dataTransfer.getData('text/plain');
+    if (sourceCol && sourceHeaders.includes(sourceCol)) {
+      onSetMapping(sourceCol, fieldName);
+    }
+  };
+
   return (
     <div className="mapping-panel">
       <div className="panel-header-row">
@@ -46,6 +92,7 @@ export function TargetFieldsPanel({
             {activeSchema?.targetCollection || 'target_collection'}
           </span>
         </div>
+        <span className="panel-drag-hint">&larr; Drop source column here</span>
       </div>
 
       <div className="panel-filter-bar">
@@ -95,14 +142,28 @@ export function TargetFieldsPanel({
           filteredFields.map((field) => {
             const mappedSource = reverseMappings[field.name] || '';
             const isRequiredUnmapped = field.required && !mappedSource;
+            const isDropActive = dragOverField === field.name;
+            const isDragging = draggedField === field.name;
+
+            const rules = mappedSource ? (transformations[mappedSource] || {}) : {};
+            const activeRuleTags = describeActiveRules(rules);
 
             return (
               <div
                 key={field.name}
-                className={`target-card ${mappedSource ? 'is-mapped' : ''} ${isRequiredUnmapped ? 'is-required-unmapped' : ''}`}
+                draggable={true}
+                onDragStart={(e) => handleDragStart(e, field.name)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleDragOver(e, field.name)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, field.name)}
+                className={`target-card ${mappedSource ? 'is-mapped' : ''} ${isRequiredUnmapped ? 'is-required-unmapped' : ''} ${isDropActive ? 'is-drop-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
               >
                 <div className="target-card-top">
                   <div className="target-name-group">
+                    <span className="drag-handle-grip" title="Drag to connect">
+                      <GripVerticalIcon size={15} />
+                    </span>
                     <span className="target-field-name">{field.name}</span>
                     {field.required && <span className="required-badge">* Required</span>}
                     {field.unique && <span className="unique-badge">Unique</span>}
@@ -122,12 +183,12 @@ export function TargetFieldsPanel({
                 )}
 
                 <div className="target-card-binding">
-                  <span className="binding-label">
-                    <ArrowRightIcon size={13} className="text-purple" />
-                    Source Column:
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span className="binding-label">
+                      <ArrowRightIcon size={13} className="text-purple" />
+                      Source:
+                    </span>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <select
                       className={`source-select-inline ${mappedSource ? 'has-mapping' : ''}`}
                       value={mappedSource}
@@ -141,7 +202,7 @@ export function TargetFieldsPanel({
                       }}
                       aria-label={`Source column for ${field.name}`}
                     >
-                      <option value="">-- Select Source Column --</option>
+                      <option value="">-- Drop or Select Column --</option>
                       {sourceHeaders.map((src) => (
                         <option key={src} value={src}>
                           {src}
@@ -151,6 +212,7 @@ export function TargetFieldsPanel({
 
                     {mappedSource && (
                       <button
+                        type="button"
                         className="mapping-chip-unlink-btn"
                         onClick={() => onRemoveMappingByTarget(field.name)}
                         title={`Unlink ${field.name}`}
@@ -160,6 +222,18 @@ export function TargetFieldsPanel({
                       </button>
                     )}
                   </div>
+
+                  {mappedSource && onOpenRules && (
+                    <button
+                      type="button"
+                      className="rules-pill-btn rules-pill-purple"
+                      onClick={() => onOpenRules(mappedSource)}
+                      title="Configure transformation rules for this field"
+                    >
+                      <Settings2Icon size={13} className="text-purple" />
+                      <span>{activeRuleTags.slice(0, 2).join(' · ') || 'Rules'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );

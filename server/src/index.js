@@ -4,6 +4,7 @@ require('dotenv').config();
 
 const uploadRouter = require('./routes/upload');
 const schemasRouter = require('./routes/schemas');
+const { router: jobsRouter } = require('./routes/jobs');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -18,6 +19,7 @@ app.use(express.json());
 
 app.use('/api/upload', uploadRouter);
 app.use('/api/schemas', schemasRouter);
+app.use('/api/jobs', jobsRouter);
 
 app.get('/health', (req, res) => {
   const mem = process.memoryUsage();

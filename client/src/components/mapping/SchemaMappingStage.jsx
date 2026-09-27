@@ -5,6 +5,9 @@ import { MappingHeader } from './MappingHeader';
 import { MappingSummaryBar } from './MappingSummaryBar';
 import { SourceColumnsPanel } from './SourceColumnsPanel';
 import { TargetFieldsPanel } from './TargetFieldsPanel';
+import { TransformationDrawer } from './TransformationDrawer';
+import { AutoMapReportModal } from './AutoMapReportModal';
+import { ValidationDrawer } from './ValidationDrawer';
 import { MappingJsonViewerModal } from './MappingJsonViewerModal';
 import { useSchemaMapping } from '../../hooks/useSchemaMapping';
 import { Button } from '../common/Button';
@@ -14,7 +17,8 @@ import {
   AlertCircleIcon, 
   ArrowRightIcon, 
   DatabaseIcon, 
-  CloudUploadIcon 
+  CloudUploadIcon,
+  SparklesIcon 
 } from '../common/Icons';
 
 export function SchemaMappingStage({
@@ -25,6 +29,12 @@ export function SchemaMappingStage({
   onProceedToIngest
 }) {
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
+  const [isValidationDrawerOpen, setIsValidationDrawerOpen] = useState(false);
+  const [activeDrawer, setActiveDrawer] = useState({
+    isOpen: false,
+    sourceColumn: null,
+    targetField: null
+  });
 
   // Extract source headers from metadata or preview rows
   const sourceHeaders = useMemo(() => {
@@ -58,12 +68,20 @@ export function SchemaMappingStage({
     targetFields,
     mappings,
     reverseMappings,
+    transformations,
+    autoMatchReport,
+    validation,
     setSelectedSchemaId,
     setMapping,
     removeMapping,
     removeMappingByTarget,
+    resolveDuplicate,
     clearAllMappings,
     autoMapAll,
+    clearAutoMatchReport,
+    setTransformation,
+    resetTransformation,
+    getTransformation,
     stats,
     exportConfig
   } = useSchemaMapping({
@@ -72,7 +90,30 @@ export function SchemaMappingStage({
     initialSchemaId
   });
 
+  const handleOpenRules = (sourceCol) => {
+    const tgtName = mappings[sourceCol];
+    if (!tgtName) return;
+    const targetDef = targetFields.find((f) => f.name === tgtName);
+    setActiveDrawer({
+      isOpen: true,
+      sourceColumn: sourceCol,
+      targetField: targetDef || { name: tgtName, type: 'String', required: false }
+    });
+  };
+
+  const handleCloseDrawer = () => {
+    setActiveDrawer({
+      isOpen: false,
+      sourceColumn: null,
+      targetField: null
+    });
+  };
+
   const handleProceed = () => {
+    if (!validation.canProceed) {
+      setIsValidationDrawerOpen(true);
+      return;
+    }
     const compiledConfig = exportConfig();
     if (onProceedToIngest) {
       onProceedToIngest(compiledConfig);
@@ -81,12 +122,12 @@ export function SchemaMappingStage({
 
   return (
     <div className="schema-mapping-stage">
-      {/* Stage Toolbar */}
+      {/* Stage Toolbar with Auto-Map action */}
       <MappingHeader
         schemas={schemas}
         selectedSchemaId={selectedSchemaId}
         onSelectSchema={setSelectedSchemaId}
-        onAutoMap={autoMapAll}
+        onAutoMap={() => autoMapAll()}
         onClearMappings={clearAllMappings}
         onOpenJsonModal={() => setIsJsonModalOpen(true)}
         mappedCount={stats.mappedCount}
@@ -101,13 +142,15 @@ export function SchemaMappingStage({
 
       {/* Primary Split-Column Mapping Workspace */}
       <div className="mapping-split-container">
-        {/* Left Panel: CSV Source Columns */}
+        {/* Left Panel: CSV Source Columns with Drag & Drop and Rule Buttons */}
         <SourceColumnsPanel
           sourceHeaders={sourceHeaders}
           sampleRows={parsedRows}
           mappings={mappings}
+          transformations={transformations}
           targetFields={targetFields}
           onSetMapping={setMapping}
+          onOpenRules={handleOpenRules}
         />
 
         {/* Center Connection Pipeline Bridge */}
@@ -119,37 +162,41 @@ export function SchemaMappingStage({
           <div className="bridge-pipe-line" />
         </div>
 
-        {/* Right Panel: Target Database Fields */}
+        {/* Right Panel: Target Database Fields with Drop Zones and Rule Buttons */}
         <TargetFieldsPanel
           targetFields={targetFields}
           activeSchema={activeSchema}
           sourceHeaders={sourceHeaders}
           reverseMappings={reverseMappings}
+          transformations={transformations}
           onSetMapping={setMapping}
           onRemoveMappingByTarget={removeMappingByTarget}
+          onOpenRules={handleOpenRules}
         />
       </div>
 
-      {/* Bottom Sticky Action / Validation Bar */}
+      {/* Bottom Sticky Action / Pre-Upload Validation Bar */}
       <div className="mapping-footer-bar">
         <div
-          className={`footer-status-pill ${stats.isAllRequiredMapped ? 'is-ready' : 'is-incomplete'}`}
+          className={`footer-status-pill ${validation.canProceed ? 'is-ready' : 'is-incomplete'}`}
         >
-          {stats.isAllRequiredMapped ? (
+          {validation.canProceed ? (
             <>
               <CheckCircleIcon size={18} />
               <span>
-                All {stats.requiredCount} required database fields successfully mapped to source columns.
+                All {stats.requiredCount} required database fields successfully validated & mapped.
               </span>
             </>
           ) : (
             <>
               <AlertCircleIcon size={18} />
               <span>
-                {stats.unmappedRequiredCount} required target field
-                {stats.unmappedRequiredCount > 1 ? 's' : ''} unmapped:{' '}
+                {validation.criticalErrorsCount} validation blocker{validation.criticalErrorsCount > 1 ? 's' : ''}:{' '}
                 <strong>
-                  {stats.missingRequiredFields.map((f) => f.name).join(', ')}
+                  {validation.missingRequiredFields.length > 0 &&
+                    `${validation.missingRequiredFields.length} required field(s) unmapped`}
+                  {validation.duplicateTargetAlerts.length > 0 &&
+                    ` · ${validation.duplicateTargetAlerts.length} duplicate collision(s)`}
                 </strong>
               </span>
             </>
@@ -157,6 +204,18 @@ export function SchemaMappingStage({
         </div>
 
         <div className="footer-buttons-group">
+          {!validation.canProceed && (
+            <Button
+              variant="outline"
+              size="md"
+              icon={AlertCircleIcon}
+              onClick={() => setIsValidationDrawerOpen(true)}
+              title="Inspect blocking validation errors and duplicate mappings"
+            >
+              Review Issues ({validation.totalErrors})
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="md"
@@ -166,14 +225,14 @@ export function SchemaMappingStage({
           </Button>
 
           <Button
-            variant="primary"
+            variant={validation.canProceed ? 'primary' : 'secondary'}
             size="md"
             icon={CloudUploadIcon}
             onClick={handleProceed}
             title={
-              stats.isAllRequiredMapped
+              validation.canProceed
                 ? 'Proceed to Ingestion stream'
-                : 'Map all required fields before proceeding'
+                : 'Review and resolve required field blockers before proceeding'
             }
           >
             Proceed to Ingest &rarr;
@@ -181,11 +240,44 @@ export function SchemaMappingStage({
         </div>
       </div>
 
-      {/* Active Mapping JSON Inspector Modal */}
+      {/* Transformation Drawer (Slide-Over for Rule Selection) */}
+      <TransformationDrawer
+        isOpen={activeDrawer.isOpen}
+        onClose={handleCloseDrawer}
+        sourceColumn={activeDrawer.sourceColumn}
+        targetField={activeDrawer.targetField}
+        sampleRows={parsedRows}
+        currentRules={
+          activeDrawer.sourceColumn ? getTransformation(activeDrawer.sourceColumn) : {}
+        }
+        onSaveRules={setTransformation}
+        onResetRules={resetTransformation}
+      />
+
+      {/* Day 3: Auto-Mapping Heuristic Report Modal */}
+      <AutoMapReportModal
+        isOpen={Boolean(autoMatchReport)}
+        onClose={clearAutoMatchReport}
+        report={autoMatchReport}
+      />
+
+      {/* Day 3: Pre-Upload Validation Audit Drawer */}
+      <ValidationDrawer
+        isOpen={isValidationDrawerOpen}
+        onClose={() => setIsValidationDrawerOpen(false)}
+        validation={validation}
+        sourceHeaders={sourceHeaders}
+        onSetMapping={setMapping}
+        onResolveDuplicate={resolveDuplicate}
+        onProceedToIngest={handleProceed}
+      />
+
+      {/* Active Mapping & Transformations JSON Inspector Modal */}
       <MappingJsonViewerModal
         isOpen={isJsonModalOpen}
         onClose={() => setIsJsonModalOpen(false)}
         mappings={mappings}
+        transformations={transformations}
         activeSchema={activeSchema}
         stats={stats}
       />
