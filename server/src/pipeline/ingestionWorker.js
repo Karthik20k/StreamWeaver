@@ -3,20 +3,24 @@ const { pipeline } = require('node:stream/promises');
 const crypto = require('node:crypto');
 const StagingData = require('../models/StagingData');
 const UploadError = require('../models/UploadError');
+const DeadLetterQueue = require('../models/DeadLetterQueue');
 const { createCsvParserStream, RowValidationTransform } = require('../streams/csvParserStream');
-const { MongoBatchIngestionStream, IsolatedErrorBatcher } = require('../streams/batchIngestionStream');
+const { DestinationBuffer, DLQBuffer } = require('../streams/batchIngestionStream');
 
 /**
- * Execute the complete streaming ingestion pipeline.
+ * Execute the complete streaming ingestion pipeline with separate DestinationBuffer and DLQBuffer sinks.
  *
  * @param {object} options
  * @param {import('stream').Readable|string} options.source - Readable stream OR string file path
  * @param {string} [options.fileId] - Unique file identifier (auto-generated if omitted)
  * @param {string} [options.fileName] - Original file name
- * @param {number} [options.batchSize=1000] - Micro-batching threshold
+ * @param {number} [options.batchSize=1000] - Micro-batching threshold for DestinationBuffer
+ * @param {number} [options.dlqBatchSize=500] - Micro-batching threshold for DLQBuffer
+ * @param {number} [options.flushTimeoutMs=500] - Inactivity / trailing record flush timeout (ms)
  * @param {'bulkWrite'|'insertMany'} [options.writeMethod='bulkWrite'] - MongoDB bulk insertion method
- * @param {import('mongoose').Model} [options.stagingModel=StagingData] - Mongoose staging model
+ * @param {import('mongoose').Model} [options.stagingModel=StagingData] - Destination Mongoose model
  * @param {import('mongoose').Model} [options.errorModel=UploadError] - Mongoose upload error model
+ * @param {import('mongoose').Model} [options.dlqModel] - Optional direct DLQ Mongoose model
  * @param {function} [options.rowValidator] - Optional custom row validator function
  * @param {function} [options.onProgress] - Progress event callback
  * @param {function} [options.onBatch] - Batch completion event callback
@@ -29,9 +33,12 @@ async function processCsvIngestion(options = {}) {
     fileId = `file_${crypto.randomUUID()}`,
     fileName = 'unknown_source.csv',
     batchSize = 1000,
+    dlqBatchSize = 500,
+    flushTimeoutMs = 500,
     writeMethod = 'bulkWrite',
     stagingModel = StagingData,
     errorModel = UploadError,
+    dlqModel = null,
     rowValidator = null,
     onProgress = null,
     onBatch = null,
@@ -62,11 +69,15 @@ async function processCsvIngestion(options = {}) {
   const startTime = Date.now();
   let headersDetected = [];
 
-  // 2. Initialize Isolated Error Batcher
-  const errorBatcher = new IsolatedErrorBatcher({
-    model: errorModel,
+  // 2. Initialize DLQ Buffer for isolated errors
+  const activeDlqModel = dlqModel || errorModel || DeadLetterQueue;
+  const errorBatcher = new DLQBuffer({
+    model: activeDlqModel,
+    jobId: fileId,
     fileId,
-    batchSize: Math.min(batchSize, 500)
+    batchSize: Math.min(dlqBatchSize, 500),
+    flushTimeoutMs,
+    writeMethod
   });
 
   // 3. Initialize CSV Parser
@@ -87,11 +98,12 @@ async function processCsvIngestion(options = {}) {
     validatorTransform.setHeaders(headers);
   });
 
-  // 5. Initialize Micro-batching MongoDB Ingestion Writable
-  const batchIngestionStream = new MongoBatchIngestionStream({
+  // 5. Initialize Destination Buffer for clean records
+  const batchIngestionStream = new DestinationBuffer({
     model: stagingModel,
     fileId,
     batchSize,
+    flushTimeoutMs,
     writeMethod,
     metadata: {
       sourceFileName: fileName,
@@ -125,8 +137,8 @@ async function processCsvIngestion(options = {}) {
       batchIngestionStream
     );
 
-    // 7. Flush any remaining isolated errors
-    await errorBatcher.flush();
+    // 7. Flush and close any remaining isolated errors in DLQBuffer
+    await errorBatcher.close();
 
     const durationMs = Date.now() - startTime;
     const durationSec = Math.max(durationMs / 1000, 0.001);
