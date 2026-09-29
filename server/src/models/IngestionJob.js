@@ -45,6 +45,19 @@ const IngestionJobSchema = new mongoose.Schema(
       default: Date.now,
       index: true
     },
+    // Real-time progress telemetry fields (updated on every batch callback)
+    lastProgressAt: {
+      type: Date,
+      default: null
+    },
+    currentRateRowsPerSec: {
+      type: Number,
+      default: 0
+    },
+    lastProgressWindowMs: {
+      type: Number,
+      default: 0
+    },
     // Traceability and pipeline integration fields
     fileId: {
       type: String,
@@ -93,14 +106,31 @@ const IngestionJobSchema = new mongoose.Schema(
 // Compound indexes for rapid telemetry querying and dashboard filtering
 IngestionJobSchema.index({ status: 1, createdAt: -1 });
 IngestionJobSchema.index({ fileId: 1, status: 1 });
+// Index to accelerate live telemetry SSE/polling queries
+IngestionJobSchema.index({ jobId: 1, status: 1 });
 
 /**
  * Instance method to record batch progress updates in real-time.
+ * Computes a rolling rows/sec rate between consecutive calls using
+ * a time-window delta so the SSE endpoint can report live throughput.
+ *
+ * @param {number} processedDelta - Number of rows processed in this batch
+ * @param {number} [errorDelta=0]  - Number of errors in this batch
  */
 IngestionJobSchema.methods.updateProgress = function (processedDelta, errorDelta = 0) {
+  const now = new Date();
+  const prevAt = this.lastProgressAt ? new Date(this.lastProgressAt) : (this.startedAt ? new Date(this.startedAt) : now);
+  const windowMs = Math.max(now.getTime() - prevAt.getTime(), 1);
+
   this.totalRowsProcessed = (this.totalRowsProcessed || 0) + processedDelta;
   this.errorCount = (this.errorCount || 0) + errorDelta;
   this.validRows = Math.max(0, this.totalRowsProcessed - this.errorCount);
+
+  // Rolling rate: rows added in this window / window duration
+  this.currentRateRowsPerSec = +(processedDelta / (windowMs / 1000)).toFixed(2);
+  this.lastProgressWindowMs = windowMs;
+  this.lastProgressAt = now;
+
   return this.save();
 };
 
@@ -126,7 +156,22 @@ IngestionJobSchema.methods.markCompleted = function (summary = {}) {
 IngestionJobSchema.methods.markFailed = function (error) {
   this.status = 'failed';
   this.completedAt = new Date();
+  this.currentRateRowsPerSec = 0;
   this.errorMessage = typeof error === 'string' ? error : error?.message || 'Unknown pipeline failure';
+  return this.save();
+};
+
+/**
+ * Instance method to mark job cancellation (stream aborted mid-way).
+ */
+IngestionJobSchema.methods.markCancelled = function (reason = 'Stream aborted') {
+  this.status = 'cancelled';
+  this.completedAt = new Date();
+  this.currentRateRowsPerSec = 0;
+  this.errorMessage = reason;
+  if (this.startedAt) {
+    this.durationMs = new Date().getTime() - new Date(this.startedAt).getTime();
+  }
   return this.save();
 };
 

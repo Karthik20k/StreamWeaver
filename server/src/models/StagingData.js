@@ -11,6 +11,11 @@ const StagingDataSchema = new mongoose.Schema(
       required: true,
       index: true
     },
+    // jobId mirrors the IngestionJob.jobId for cross-collection telemetry joins and cleanup
+    jobId: {
+      type: String,
+      index: true
+    },
     batchId: {
       type: String,
       required: true,
@@ -41,6 +46,9 @@ const StagingDataSchema = new mongoose.Schema(
 // Compound index for fast range queries and file-level cleanup
 StagingDataSchema.index({ fileId: 1, rowNumber: 1 });
 StagingDataSchema.index({ fileId: 1, batchId: 1 });
+// jobId-based indexes for cleanup and telemetry cross-collection queries
+StagingDataSchema.index({ jobId: 1, rowNumber: 1 });
+StagingDataSchema.index({ jobId: 1, batchId: 1 });
 
 const StagingData = mongoose.models.StagingData || mongoose.model('StagingData', StagingDataSchema);
 
