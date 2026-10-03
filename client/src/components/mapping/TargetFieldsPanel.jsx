@@ -134,9 +134,17 @@ export function TargetFieldsPanel({
       </div>
 
       <div className="mapping-cards-list">
-        {filteredFields.length === 0 ? (
+        {targetFields.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem 1.5rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <DatabaseIcon size={32} className="text-purple" style={{ opacity: 0.6 }} />
+            <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>No Target Fields Found</div>
+            <p style={{ fontSize: '0.82rem', maxWidth: '300px' }}>
+              Select a target database schema from the collection dropdown above.
+            </p>
+          </div>
+        ) : filteredFields.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
-            No target fields matching filter
+            No target fields matching filter {searchQuery ? `"${searchQuery}"` : ''}
           </div>
         ) : (
           filteredFields.map((field) => {

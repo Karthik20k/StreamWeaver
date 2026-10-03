@@ -147,9 +147,17 @@ export function SourceColumnsPanel({
       </div>
 
       <div className="mapping-cards-list">
-        {filteredHeaders.length === 0 ? (
+        {sourceHeaders.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem 1.5rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <LayersIcon size={32} className="text-cyan" style={{ opacity: 0.6 }} />
+            <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>No CSV Headers Detected</div>
+            <p style={{ fontSize: '0.82rem', maxWidth: '300px' }}>
+              Upload a CSV file or select a sample dataset from Step 1 to extract columns for mapping.
+            </p>
+          </div>
+        ) : filteredHeaders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
-            No source columns matching filter
+            No source columns matching filter {searchQuery ? `"${searchQuery}"` : ''}
           </div>
         ) : (
           filteredHeaders.map((colName, idx) => {
