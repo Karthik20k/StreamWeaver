@@ -1,5 +1,5 @@
 import React from 'react';
-import { SlidersIcon, SparklesIcon, TrashIcon, CopyIcon, DatabaseIcon } from '../common/Icons';
+import { SlidersIcon, SparklesIcon, TrashIcon, CopyIcon, DatabaseIcon, CodeIcon } from '../common/Icons';
 import { Button } from '../common/Button';
 
 export function MappingHeader({
@@ -9,6 +9,8 @@ export function MappingHeader({
   onAutoMap,
   onClearMappings,
   onOpenJsonModal,
+  onOpenScriptEditor,
+  hasCustomScript = false,
   mappedCount = 0,
   totalSource = 0
 }) {
@@ -43,6 +45,16 @@ export function MappingHeader({
       </div>
 
       <div className="mapping-toolbar-actions">
+        <Button
+          variant={hasCustomScript ? 'primary' : 'outline'}
+          size="sm"
+          icon={CodeIcon}
+          onClick={onOpenScriptEditor}
+          title="Open dynamic JavaScript transformation workspace (Monaco Editor)"
+        >
+          {hasCustomScript ? 'JS Script (Active)' : 'Custom JS Script'}
+        </Button>
+
         <Button
           variant="outline"
           size="sm"
