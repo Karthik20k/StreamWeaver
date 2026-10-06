@@ -1124,3 +1124,575 @@
   cursor: pointer;
 }
 
+/* ==========================================================================
+   Day 12: Real-Time Telemetry Dashboard UI Styles
+   Radial/Linear Progress Bar + Speedometer Gauge + Dynamic Countdown Clock
+   ========================================================================== */
+
+.telemetry-dashboard-hero-suite {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .telemetry-dashboard-hero-suite {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Common Telemetry Widget Card Style */
+.radial-telemetry-widget,
+.speed-gauge-telemetry-widget,
+.countdown-clock-telemetry-widget {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 1.25rem;
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.radial-telemetry-widget:hover,
+.speed-gauge-telemetry-widget:hover,
+.countdown-clock-telemetry-widget:hover {
+  border-color: rgba(6, 182, 212, 0.3);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+.telemetry-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.widget-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+}
+
+/* --------------------------------------------------------------------------
+   Widget 1: Radial Progress Bar & Linear Bars
+   -------------------------------------------------------------------------- */
+.radial-metric-toggle-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  padding: 0.15rem;
+}
+
+.metric-toggle-pill {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.metric-toggle-pill:hover {
+  color: var(--text-main);
+}
+
+.metric-toggle-pill.active.cyan {
+  background: rgba(6, 182, 212, 0.2);
+  color: var(--accent-cyan);
+}
+
+.metric-toggle-pill.active.purple {
+  background: rgba(139, 92, 246, 0.2);
+  color: var(--accent-purple);
+}
+
+.radial-svg-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.25rem auto;
+  width: 180px;
+  height: 180px;
+}
+
+.radial-bg-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.05);
+}
+
+.radial-bg-track.inner {
+  stroke: rgba(255, 255, 255, 0.03);
+}
+
+.radial-active-ring {
+  transition: stroke-dashoffset 0.35s ease;
+}
+
+.radial-center-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.radial-pct-number {
+  font-size: 2.1rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.radial-metric-caption {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  margin-top: 0.2rem;
+}
+
+.radial-status-badge {
+  margin-top: 0.35rem;
+}
+
+.badge-text {
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.badge-text.success {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.badge-text.active {
+  color: #06b6d4;
+  background: rgba(6, 182, 212, 0.15);
+}
+
+.mini-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #06b6d4;
+  animation: pulseGlow 1.2s infinite ease-in-out;
+}
+
+/* Linear Sub-Bars Stack */
+.radial-linear-bars-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  background: rgba(13, 19, 34, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0.75rem 0.95rem;
+}
+
+.linear-sub-bar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.linear-sub-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.sub-label-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.legend-indicator.cyan {
+  background: var(--accent-cyan);
+}
+
+.legend-indicator.purple {
+  background: var(--accent-purple);
+}
+
+.sub-label-val strong {
+  color: var(--text-main);
+  font-family: var(--font-mono);
+}
+
+.linear-sub-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.linear-sub-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.linear-sub-fill.cyan {
+  background: linear-gradient(90deg, #06b6d4, #10b981);
+}
+
+.linear-sub-fill.purple {
+  background: linear-gradient(90deg, #8b5cf6, #38bdf8);
+}
+
+/* --------------------------------------------------------------------------
+   Widget 2: Speed Gauge (Rows Processed / Sec)
+   -------------------------------------------------------------------------- */
+.speed-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.tier-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: pulseGlow 1.2s infinite ease-in-out;
+}
+
+.speed-gauge-svg-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  margin: 0.25rem 0;
+}
+
+.speed-gauge-svg {
+  overflow: visible;
+}
+
+.gauge-bg-arc {
+  stroke: rgba(255, 255, 255, 0.06);
+}
+
+.gauge-active-arc {
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.gauge-tick-line {
+  stroke: rgba(255, 255, 255, 0.2);
+}
+
+.gauge-tick-text {
+  fill: var(--text-muted);
+  font-size: 8px;
+  font-family: var(--font-mono);
+}
+
+.gauge-needle-line {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.gauge-readout-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: -10px;
+}
+
+.gauge-velocity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.gauge-velocity-num {
+  font-size: 1.85rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.gauge-velocity-unit {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 0.15rem;
+}
+
+.gauge-telemetry-footer {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  background: rgba(13, 19, 34, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  text-align: center;
+}
+
+.gauge-footer-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.footer-metric-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.footer-metric-val {
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   Widget 3: Countdown Clock & Dynamic ETA
+   -------------------------------------------------------------------------- */
+.clock-status-pill .clock-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 12px;
+}
+
+.clock-pill-badge.active {
+  color: var(--accent-amber);
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.clock-pill-badge.complete {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.clock-pill-badge.idle {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+}
+
+.clock-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-amber);
+  animation: pulseGlow 1.2s infinite ease-in-out;
+}
+
+.countdown-main-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 20, 0.6);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 10px;
+  padding: 1.5rem 1rem;
+  margin: 0.25rem 0;
+  box-shadow: inset 0 0 25px rgba(245, 158, 11, 0.04);
+}
+
+.countdown-clock-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.clock-face-header {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.clock-digit-display {
+  margin: 0.5rem 0 0.35rem 0;
+}
+
+.clock-digits {
+  font-size: 2.85rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+.clock-digit-complete {
+  font-size: 2.85rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: #10b981;
+  line-height: 1;
+}
+
+.clock-digits-calculating {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.clock-sub-target {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.target-label {
+  color: var(--text-muted);
+}
+
+.target-val {
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.countdown-details-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  background: rgba(13, 19, 34, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  text-align: center;
+}
+
+.countdown-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.detail-item-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.detail-item-val {
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   Wide Stream Progress Bar Card
+   -------------------------------------------------------------------------- */
+.ingest-progress-stream-bar-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  box-shadow: var(--shadow-card);
+}
+
+.stream-bar-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.stream-meta-status {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.stream-bar-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.stream-meta-throughput {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.stream-meta-pct {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+

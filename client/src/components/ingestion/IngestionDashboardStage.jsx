@@ -3,6 +3,9 @@ import '../../styles/ingestion.css';
 
 import { useIngestionStream } from '../../hooks/useIngestionStream';
 import { ErrorAuditDrawer } from './ErrorAuditDrawer';
+import { RadialProgressBar } from './RadialProgressBar';
+import { SpeedGaugeWidget } from './SpeedGaugeWidget';
+import { CountdownClockWidget } from './CountdownClockWidget';
 import { Button } from '../common/Button';
 import { 
   DatabaseIcon, 
@@ -53,6 +56,15 @@ export function IngestionDashboardStage({
     mappingConfig,
     metadata
   });
+
+  const [peakRate, setPeakRate] = useState(0);
+
+  // Track maximum observed processing rate
+  useEffect(() => {
+    if (processingRate > peakRate) {
+      setPeakRate(processingRate);
+    }
+  }, [processingRate, peakRate]);
 
   // Automatically start ingestion upon transitioning into this dashboard stage
   useEffect(() => {
@@ -165,47 +177,51 @@ export function IngestionDashboardStage({
       </div>
 
       {/* --------------------------------------------------------------------
-          2. Glowing Animated Live Progress Hero Card
+          2. Day 12: Real-Time Telemetry Dashboard Suite
+          Radial/Linear Progress + Dynamic Speed Gauge + Countdown Clock
           -------------------------------------------------------------------- */}
-      <div className="ingest-progress-hero-card">
-        <div className="progress-hero-top">
-          <div className="hero-pct-display">
-            <span className="hero-pct-num">{progress}%</span>
-            <span className="hero-status-subtitle">
-              {isCompleted ? 'Streaming Ingestion Complete' : 'Streaming Chunks to MongoDB Batches...'}
+      <div className="telemetry-dashboard-hero-suite">
+        {/* Widget 1: Real-Time Radial & Linear Progress Bar (Bytes & Rows) */}
+        <RadialProgressBar
+          bytesUploaded={bytesUploaded}
+          totalBytes={totalBytes || file?.size || 0}
+          rowsProcessed={rowsProcessed}
+          totalRows={totalRows}
+          status={status}
+        />
+
+        {/* Widget 2: Dynamic Speed Gauge (Rows Processed / Sec) */}
+        <SpeedGaugeWidget
+          processingRate={processingRate}
+          peakRate={peakRate}
+          uploadSpeedMBps={uploadSpeedMBps}
+          status={status}
+        />
+
+        {/* Widget 3: Running Countdown Clock with Dynamic ETA Calculation */}
+        <CountdownClockWidget
+          etaSeconds={etaSeconds}
+          elapsedSeconds={elapsedSeconds}
+          totalRows={totalRows}
+          rowsProcessed={rowsProcessed}
+          processingRate={processingRate}
+          status={status}
+        />
+      </div>
+
+      {/* Primary Cyber Stream Progress Track */}
+      <div className="ingest-progress-stream-bar-card">
+        <div className="stream-bar-meta-row">
+          <span className="stream-meta-status">
+            {isCompleted ? 'Pipeline Ingestion Finalized (100%)' : 'Streaming Chunks Through isolated-vm Sandbox to Database Buffer...'}
+          </span>
+          <div className="stream-bar-meta-right">
+            <span className="stream-meta-throughput text-cyan">
+              {uploadSpeedMBps > 0 ? `${uploadSpeedMBps} MB/s` : `${Math.round(processingRate / 1000)}k rows/s`}
             </span>
-          </div>
-
-          <div className="hero-metrics-pills">
-            <div className="hero-pill">
-              <span className="hero-pill-label">TRANSFERRED:</span>
-              <span className="hero-pill-val">
-                {formatBytes(bytesUploaded)} / {formatBytes(totalBytes || file?.size || 0)}
-              </span>
-            </div>
-
-            <div className="hero-pill">
-              <span className="hero-pill-label">THROUGHPUT:</span>
-              <span className="hero-pill-val text-cyan">
-                {uploadSpeedMBps > 0 ? `${uploadSpeedMBps} MB/s` : `${Math.round(processingRate / 1000)}k rows/s`}
-              </span>
-            </div>
-
-            <div className="hero-pill">
-              <span className="hero-pill-label">TIME:</span>
-              <span className="hero-pill-val">{formatElapsed(elapsedSeconds)}</span>
-            </div>
-
-            {!isCompleted && etaSeconds > 0 && (
-              <div className="hero-pill">
-                <span className="hero-pill-label">ETA:</span>
-                <span className="hero-pill-val text-emerald">~{etaSeconds}s</span>
-              </div>
-            )}
+            <span className="stream-meta-pct">{progress}%</span>
           </div>
         </div>
-
-        {/* Animated Cyber Progress Bar */}
         <div className="cyber-progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100">
           <div
             className={`cyber-progress-bar ${isProcessing ? 'is-animated' : ''}`}
