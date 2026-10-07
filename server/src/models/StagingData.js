@@ -3,6 +3,10 @@ const mongoose = require('mongoose');
 /**
  * StagingDataSchema:
  * Stores high-throughput ingested records with traceability metadata and flexible payload.
+ *
+ * Index additions (v2):
+ *  - { jobId: 1, rowNumber: 1 }  : Low-latency keyset pagination for Developer 3
+ *  - { jobId: 1, createdAt: -1 } : Reverse-chronological job-scoped pagination
  */
 const StagingDataSchema = new mongoose.Schema(
   {
@@ -37,18 +41,26 @@ const StagingDataSchema = new mongoose.Schema(
     }
   },
   {
+    // createdAt and updatedAt managed by Mongoose; createdAt is indexed below
+    // for reverse-chronological pagination queries.
     timestamps: true,
     strict: false,
     versionKey: false
   }
 );
 
-// Compound index for fast range queries and file-level cleanup
+// --- Existing indexes ---
+// Fast range queries and file-level cleanup
 StagingDataSchema.index({ fileId: 1, rowNumber: 1 });
 StagingDataSchema.index({ fileId: 1, batchId: 1 });
 // jobId-based indexes for cleanup and telemetry cross-collection queries
-StagingDataSchema.index({ jobId: 1, rowNumber: 1 });
 StagingDataSchema.index({ jobId: 1, batchId: 1 });
+
+// --- Pagination indexes for Developer 3 ---
+// Compound index: supports low-latency keyset pagination sorted by rowNumber within a job
+StagingDataSchema.index({ jobId: 1, rowNumber: 1 });
+// Compound index: supports reverse-chronological pagination and time-range queries within a job
+StagingDataSchema.index({ jobId: 1, createdAt: -1 });
 
 const StagingData = mongoose.models.StagingData || mongoose.model('StagingData', StagingDataSchema);
 

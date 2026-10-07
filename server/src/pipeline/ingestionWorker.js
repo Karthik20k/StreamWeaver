@@ -14,9 +14,9 @@ const { DestinationBuffer, DLQBuffer } = require('../streams/batchIngestionStrea
  * @param {import('stream').Readable|string} options.source - Readable stream OR string file path
  * @param {string} [options.fileId] - Unique file identifier (auto-generated if omitted)
  * @param {string} [options.fileName] - Original file name
- * @param {number} [options.batchSize=1000] - Micro-batching threshold for DestinationBuffer
+ * @param {number} [options.batchSize=5000] - Micro-batching threshold for DestinationBuffer (default 5,000)
  * @param {number} [options.dlqBatchSize=500] - Micro-batching threshold for DLQBuffer
- * @param {number} [options.flushTimeoutMs=500] - Inactivity / trailing record flush timeout (ms)
+ * @param {number} [options.flushTimeoutMs=750] - Dual flush: inactivity timer threshold in ms (default 750ms)
  * @param {'bulkWrite'|'insertMany'} [options.writeMethod='bulkWrite'] - MongoDB bulk insertion method
  * @param {import('mongoose').Model} [options.stagingModel=StagingData] - Destination Mongoose model
  * @param {import('mongoose').Model} [options.errorModel=UploadError] - Mongoose upload error model
@@ -32,9 +32,9 @@ async function processCsvIngestion(options = {}) {
     source,
     fileId = `file_${crypto.randomUUID()}`,
     fileName = 'unknown_source.csv',
-    batchSize = 1000,
+    batchSize = 5000,
     dlqBatchSize = 500,
-    flushTimeoutMs = 500,
+    flushTimeoutMs = 750,
     writeMethod = 'bulkWrite',
     stagingModel = StagingData,
     errorModel = UploadError,
@@ -105,6 +105,10 @@ async function processCsvIngestion(options = {}) {
     batchSize,
     flushTimeoutMs,
     writeMethod,
+    // Wire the upstream readable for explicit backpressure coupling:
+    // DestinationBuffer will call stream.pause() before bulkWrite() and
+    // stream.resume() once the write operation resolves.
+    upstreamReadable: readableStream,
     metadata: {
       sourceFileName: fileName,
       ...metadata
