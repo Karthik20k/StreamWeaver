@@ -2,10 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import '../../styles/ingestion.css';
 
 import { useIngestionStream } from '../../hooks/useIngestionStream';
+import { useWebSocketTelemetry } from '../../hooks/useWebSocketTelemetry';
 import { ErrorAuditDrawer } from './ErrorAuditDrawer';
 import { RadialProgressBar } from './RadialProgressBar';
 import { SpeedGaugeWidget } from './SpeedGaugeWidget';
 import { CountdownClockWidget } from './CountdownClockWidget';
+import { TelemetrySpeedChart } from './TelemetrySpeedChart';
 import { Button } from '../common/Button';
 import { 
   DatabaseIcon, 
@@ -65,6 +67,19 @@ export function IngestionDashboardStage({
       setPeakRate(processingRate);
     }
   }, [processingRate, peakRate]);
+
+  // Day 13: WebSocket Client Integration with automatic reconnection
+  const {
+    wsStatus,
+    telemetryHistory,
+    isLive: isLiveCharting,
+    setIsLive: setIsLiveCharting,
+    reconnect: reconnectWs
+  } = useWebSocketTelemetry({
+    jobId,
+    enabled: Boolean(jobId),
+    fallbackRate: processingRate
+  });
 
   // Automatically start ingestion upon transitioning into this dashboard stage
   useEffect(() => {
@@ -229,6 +244,18 @@ export function IngestionDashboardStage({
           />
         </div>
       </div>
+
+      {/* --------------------------------------------------------------------
+          2b. Day 13: Real-Time WebSocket Telemetry Speed Chart (60 FPS)
+          Plots ingestion speed (rows/sec) over time with Recharts
+          -------------------------------------------------------------------- */}
+      <TelemetrySpeedChart
+        telemetryHistory={telemetryHistory}
+        wsStatus={wsStatus}
+        onReconnect={reconnectWs}
+        isLive={isLiveCharting}
+        onToggleLive={() => setIsLiveCharting((prev) => !prev)}
+      />
 
       {/* --------------------------------------------------------------------
           3. 4 Real-Time Telemetry KPI Cards
