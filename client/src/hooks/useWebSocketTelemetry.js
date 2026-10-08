@@ -33,16 +33,31 @@ export function calculateBackoffDelay(retryCount, baseMs = 1000, maxMs = 10000) 
 }
 
 /**
+ * Builds WebSocket stream control action payloads (Day 14 Deliverable)
+ */
+export function buildControlSignal(action, jobId, extra = {}) {
+  return {
+    action,
+    jobId,
+    timestamp: Date.now(),
+    ...extra
+  };
+}
+
+/**
  * useWebSocketTelemetry
  * Connects to Developer 1's WebSocket telemetry server with automatic reconnection handling
  * Feeds high-frequency metrics into a rolling time-series window for recharts (60 FPS)
- * Dev 3 Day 13 Deliverable
+ * Day 14: Ingestion Control Center signal emitter (ABORT_STREAM, PAUSE_STREAM, RESUME_STREAM)
  */
 export function useWebSocketTelemetry({
   jobId,
   enabled = true,
   customWsUrl = null,
   onHeartbeat = null,
+  onStreamAborted = null,
+  onStreamPaused = null,
+  onStreamResumed = null,
   maxDataPoints = 30,
   fallbackRate = 0
 } = {}) {
@@ -137,6 +152,23 @@ export function useWebSocketTelemetry({
 
             if (onHeartbeat) {
               onHeartbeat(payload);
+            }
+          }
+
+          // Handle server-side stream control events (Day 14 Deliverable)
+          if (payload.type === 'STREAM_ABORTED' || payload.action === 'ABORT_STREAM') {
+            if (onStreamAborted) {
+              onStreamAborted(payload);
+            }
+          }
+          if (payload.type === 'STREAM_PAUSED' || payload.action === 'PAUSE_STREAM') {
+            if (onStreamPaused) {
+              onStreamPaused(payload);
+            }
+          }
+          if (payload.type === 'STREAM_RESUMED' || payload.action === 'RESUME_STREAM') {
+            if (onStreamResumed) {
+              onStreamResumed(payload);
             }
           }
         } catch (err) {
@@ -257,6 +289,55 @@ export function useWebSocketTelemetry({
     };
   }, [telemetryHistory]);
 
+  /**
+   * Sends immediate termination signal over WebSockets to Developer 1's backend to close streams and release memory
+   * (Day 14 Deliverable)
+   */
+  const sendAbortSignal = useCallback((reason = 'USER_ABORT') => {
+    const payload = buildControlSignal('ABORT_STREAM', activeJobIdRef.current, { reason });
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify(payload));
+        return { success: true, via: 'websocket', payload };
+      } catch (err) {
+        console.warn('[WebSocket Abort Signal Error]', err);
+      }
+    }
+    return { success: false, via: 'offline', payload };
+  }, []);
+
+  /**
+   * Sends pause signal over WebSockets to halt stream consumption
+   */
+  const sendPauseSignal = useCallback(() => {
+    const payload = buildControlSignal('PAUSE_STREAM', activeJobIdRef.current);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify(payload));
+        return { success: true, via: 'websocket', payload };
+      } catch (err) {
+        console.warn('[WebSocket Pause Signal Error]', err);
+      }
+    }
+    return { success: false, via: 'offline', payload };
+  }, []);
+
+  /**
+   * Sends resume signal over WebSockets to restart stream consumption
+   */
+  const sendResumeSignal = useCallback(() => {
+    const payload = buildControlSignal('RESUME_STREAM', activeJobIdRef.current);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify(payload));
+        return { success: true, via: 'websocket', payload };
+      } catch (err) {
+        console.warn('[WebSocket Resume Signal Error]', err);
+      }
+    }
+    return { success: false, via: 'offline', payload };
+  }, []);
+
   return {
     wsStatus,
     telemetryHistory,
@@ -266,6 +347,9 @@ export function useWebSocketTelemetry({
     stats,
     setIsLive,
     reconnect: manualReconnect,
-    disconnect
+    disconnect,
+    sendAbortSignal,
+    sendPauseSignal,
+    sendResumeSignal
   };
 }
