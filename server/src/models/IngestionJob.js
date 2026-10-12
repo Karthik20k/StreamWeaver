@@ -135,6 +135,54 @@ IngestionJobSchema.methods.updateProgress = function (processedDelta, errorDelta
 };
 
 /**
+ * Static method to atomically record batch progress updates in MongoDB
+ * without full document loading or write-lock contention.
+ * Uses atomic $inc and $set operators with writeConcern { w: 1, j: false }
+ * to prevent WiredTiger row lock holding and Mongoose VersionError race conditions.
+ *
+ * @param {string} jobId
+ * @param {object} deltas
+ * @param {number} [deltas.processedDelta=0]
+ * @param {number} [deltas.errorDelta=0]
+ * @param {number} [deltas.validDelta=null]
+ * @param {number} [deltas.currentRateRowsPerSec=null]
+ * @param {Date}   [deltas.lastProgressAt=new Date()]
+ * @returns {Promise<object>} Update result
+ */
+IngestionJobSchema.statics.updateProgressAtomic = async function (jobId, deltas = {}) {
+  const {
+    processedDelta = 0,
+    errorDelta = 0,
+    validDelta = null,
+    currentRateRowsPerSec = null,
+    lastProgressAt = new Date()
+  } = deltas;
+
+  const validIncrement = validDelta !== null ? validDelta : Math.max(0, processedDelta - errorDelta);
+
+  const update = {
+    $inc: {
+      totalRowsProcessed: processedDelta,
+      errorCount: errorDelta,
+      validRows: validIncrement
+    },
+    $set: {
+      lastProgressAt
+    }
+  };
+
+  if (currentRateRowsPerSec !== null) {
+    update.$set.currentRateRowsPerSec = currentRateRowsPerSec;
+  }
+
+  return this.updateOne(
+    { jobId },
+    update,
+    { writeConcern: { w: 1, j: false } }
+  );
+};
+
+/**
  * Instance method to mark job completion and record final metrics.
  */
 IngestionJobSchema.methods.markCompleted = function (summary = {}) {

@@ -233,23 +233,50 @@ router.get('/dlq/:jobId?', async (req, res) => {
  */
 router.post('/dlq', async (req, res) => {
   try {
-    const { jobId, rowNumber, rawData, rejectedReason, failedField } = req.body;
+    const {
+      jobId,
+      fileId,
+      rowNumber,
+      rawData,
+      rawRow,
+      rejectedReason,
+      errorMessage,
+      errorType,
+      failedField,
+      details,
+      stackTrace,
+      stack,
+      sandboxError
+    } = req.body;
 
-    if (!jobId || rowNumber === undefined || !rejectedReason) {
+    const reason = rejectedReason || errorMessage || (sandboxError && sandboxError.message) || 'Record rejected';
+
+    if (!jobId || rowNumber === undefined || !reason) {
       return res.status(400).json({
         success: false,
         message: 'jobId, rowNumber, and rejectedReason are required fields for DLQ entry'
       });
     }
 
+    const resolvedErrorType = errorType || (sandboxError ? 'SANDBOX_EXECUTION_FAILED' : (failedField ? 'VALIDATION_FAILED' : 'MALFORMED_ROW'));
+    const resolvedStackTrace = stackTrace || stack || (sandboxError && sandboxError.stack) || null;
+    const resolvedDetails = details || (sandboxError ? { sandboxError } : (failedField ? { failedField } : null));
+
     if (!isDbConnected()) {
       const mockRecord = {
         jobId,
+        fileId: fileId || null,
         rowNumber: Number(rowNumber),
-        rawData: rawData || null,
-        rejectedReason,
+        rawData: rawData !== undefined ? rawData : (rawRow !== undefined ? rawRow : null),
+        rawRow: rawRow !== undefined ? rawRow : (rawData !== undefined ? rawData : null),
+        rejectedReason: reason,
+        errorMessage: errorMessage || reason,
+        errorType: resolvedErrorType,
         failedField: failedField || null,
-        timestamp: new Date()
+        details: resolvedDetails,
+        stackTrace: resolvedStackTrace,
+        timestamp: new Date(),
+        createdAt: new Date()
       };
       return res.status(201).json({
         success: true,
@@ -260,10 +287,16 @@ router.post('/dlq', async (req, res) => {
 
     const record = new DeadLetterQueue({
       jobId,
+      fileId: fileId || null,
       rowNumber: Number(rowNumber),
-      rawData,
-      rejectedReason,
+      rawData: rawData !== undefined ? rawData : (rawRow !== undefined ? rawRow : null),
+      rawRow: rawRow !== undefined ? rawRow : (rawData !== undefined ? rawData : null),
+      rejectedReason: reason,
+      errorMessage: errorMessage || reason,
+      errorType: resolvedErrorType,
       failedField: failedField || null,
+      details: resolvedDetails,
+      stackTrace: resolvedStackTrace,
       timestamp: new Date()
     });
 

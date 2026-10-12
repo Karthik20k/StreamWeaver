@@ -97,8 +97,9 @@ const DeadLetterQueueSchema = new mongoose.Schema(
   }
 );
 
-// Existing compound indexes
+// Compound indexes for Developer 3 low-latency pagination & audit dashboards
 DeadLetterQueueSchema.index({ jobId: 1, rowNumber: 1 });
+DeadLetterQueueSchema.index({ jobId: 1, createdAt: -1 });
 DeadLetterQueueSchema.index({ jobId: 1, timestamp: -1 });
 // Index for error-type triage dashboards
 DeadLetterQueueSchema.index({ jobId: 1, errorType: 1 });
