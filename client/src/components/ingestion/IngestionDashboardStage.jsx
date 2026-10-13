@@ -2,7 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import '../../styles/ingestion.css';
 
 import { useIngestionStream } from '../../hooks/useIngestionStream';
+import { useWebSocketTelemetry } from '../../hooks/useWebSocketTelemetry';
 import { ErrorAuditDrawer } from './ErrorAuditDrawer';
+import { RadialProgressBar } from './RadialProgressBar';
+import { SpeedGaugeWidget } from './SpeedGaugeWidget';
+import { CountdownClockWidget } from './CountdownClockWidget';
+import { TelemetrySpeedChart } from './TelemetrySpeedChart';
+import { IngestionControlCenter } from './IngestionControlCenter';
+import { TerminalStateBanner } from './TerminalStateBanner';
+import { FailedRowsInspector } from './FailedRowsInspector';
 import { Button } from '../common/Button';
 import { 
   DatabaseIcon, 
@@ -14,7 +22,9 @@ import {
   CopyIcon,
   CheckIcon,
   XIcon,
-  SlidersIcon
+  SlidersIcon,
+  PauseIcon,
+  PlayIcon
 } from '../common/Icons';
 import { formatBytes } from '../../utils/fileHelpers';
 
@@ -45,7 +55,12 @@ export function IngestionDashboardStage({
     elapsedSeconds,
     etaSeconds,
     uploadSpeedMBps,
+    isPaused,
+    isProcessing,
+    terminalState,
     startIngestion,
+    pauseIngestion,
+    resumeIngestion,
     abortIngestion,
     resetIngestion
   } = useIngestionStream({
@@ -53,6 +68,47 @@ export function IngestionDashboardStage({
     mappingConfig,
     metadata
   });
+
+  const [peakRate, setPeakRate] = useState(0);
+
+  // Track maximum observed processing rate
+  useEffect(() => {
+    if (processingRate > peakRate) {
+      setPeakRate(processingRate);
+    }
+  }, [processingRate, peakRate]);
+
+  // Day 13 & 14: WebSocket Client Integration with automatic reconnection & signal dispatch
+  const {
+    wsStatus,
+    telemetryHistory,
+    isLive: isLiveCharting,
+    setIsLive: setIsLiveCharting,
+    reconnect: reconnectWs,
+    sendAbortSignal,
+    sendPauseSignal,
+    sendResumeSignal
+  } = useWebSocketTelemetry({
+    jobId,
+    enabled: Boolean(jobId),
+    fallbackRate: processingRate
+  });
+
+  // Day 14: Operator Control Handlers with WebSocket signal dispatch
+  const handlePause = () => {
+    sendPauseSignal();
+    pauseIngestion();
+  };
+
+  const handleResume = () => {
+    sendResumeSignal();
+    resumeIngestion();
+  };
+
+  const handleAbort = (reason = 'Manual operator abort') => {
+    sendAbortSignal(reason);
+    abortIngestion(reason);
+  };
 
   // Automatically start ingestion upon transitioning into this dashboard stage
   useEffect(() => {
@@ -84,8 +140,17 @@ export function IngestionDashboardStage({
   };
 
   const isCompleted = status === 'completed';
-  const isProcessing = status === 'processing' || status === 'uploading' || status === 'streaming';
   const isAborted = status === 'aborted';
+
+  // Compute status badge label
+  const getStatusBeaconText = () => {
+    if (isPaused) return 'EXECUTION PAUSED';
+    if (status === 'streaming' || status === 'uploading') return 'STREAMING ACTIVE';
+    if (terminalState === 'completed_success') return 'COMPLETED 100%';
+    if (terminalState === 'completed_warnings') return 'COMPLETED W/ WARNINGS';
+    if (terminalState === 'aborted') return 'STREAM ABORTED';
+    return status.toUpperCase();
+  };
 
   return (
     <div className="ingestion-dashboard-stage">
@@ -107,9 +172,9 @@ export function IngestionDashboardStage({
                 </span>
               )}
 
-              <span className={`status-beacon-pill is-${status}`}>
+              <span className={`status-beacon-pill is-${isPaused ? 'paused' : status}`}>
                 <span className="beacon-dot" />
-                <span>{status === 'streaming' || status === 'uploading' ? 'STREAMING ACTIVE' : status.toUpperCase()}</span>
+                <span>{getStatusBeaconText()}</span>
               </span>
 
               <span className="panel-badge target-badge">
@@ -130,15 +195,39 @@ export function IngestionDashboardStage({
             Audit DLQ Errors {errorCount > 0 ? `(${errorCount})` : ''}
           </Button>
 
-          {isProcessing && (
+          {isProcessing && !isPaused && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={PauseIcon}
+              onClick={handlePause}
+              title="Pause streaming ingestion"
+            >
+              Pause
+            </Button>
+          )}
+
+          {isPaused && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={PlayIcon}
+              onClick={handleResume}
+              title="Resume streaming ingestion"
+            >
+              Resume
+            </Button>
+          )}
+
+          {(isProcessing || isPaused) && (
             <Button
               variant="outline"
               size="sm"
               icon={XIcon}
-              onClick={abortIngestion}
+              onClick={() => handleAbort('Toolbar abort')}
               title="Abort streaming pipeline"
             >
-              Abort Ingestion
+              Abort Stream
             </Button>
           )}
 
@@ -165,47 +254,71 @@ export function IngestionDashboardStage({
       </div>
 
       {/* --------------------------------------------------------------------
-          2. Glowing Animated Live Progress Hero Card
+          1b. Day 14: Ingestion Control Center & Cancellation Triggers
+          Interactive execution controls: Pause Ingestion, Resume, Abort Stream
+          Wired to WebSocket termination signal (ABORT_STREAM) to close backend isolate
           -------------------------------------------------------------------- */}
-      <div className="ingest-progress-hero-card">
-        <div className="progress-hero-top">
-          <div className="hero-pct-display">
-            <span className="hero-pct-num">{progress}%</span>
-            <span className="hero-status-subtitle">
-              {isCompleted ? 'Streaming Ingestion Complete' : 'Streaming Chunks to MongoDB Batches...'}
+      <IngestionControlCenter
+        status={status}
+        isPaused={isPaused}
+        isProcessing={isProcessing}
+        terminalState={terminalState}
+        jobId={jobId}
+        rowsProcessed={rowsProcessed}
+        totalRows={totalRows}
+        wsStatus={wsStatus}
+        onPause={handlePause}
+        onResume={handleResume}
+        onAbort={handleAbort}
+        onRestart={() => startIngestion()}
+      />
+
+      {/* --------------------------------------------------------------------
+          2. Day 12: Real-Time Telemetry Dashboard Suite
+          Radial/Linear Progress + Dynamic Speed Gauge + Countdown Clock
+          -------------------------------------------------------------------- */}
+      <div className="telemetry-dashboard-hero-suite">
+        {/* Widget 1: Real-Time Radial & Linear Progress Bar (Bytes & Rows) */}
+        <RadialProgressBar
+          bytesUploaded={bytesUploaded}
+          totalBytes={totalBytes || file?.size || 0}
+          rowsProcessed={rowsProcessed}
+          totalRows={totalRows}
+          status={status}
+        />
+
+        {/* Widget 2: Dynamic Speed Gauge (Rows Processed / Sec) */}
+        <SpeedGaugeWidget
+          processingRate={processingRate}
+          peakRate={peakRate}
+          uploadSpeedMBps={uploadSpeedMBps}
+          status={status}
+        />
+
+        {/* Widget 3: Running Countdown Clock with Dynamic ETA Calculation */}
+        <CountdownClockWidget
+          etaSeconds={etaSeconds}
+          elapsedSeconds={elapsedSeconds}
+          totalRows={totalRows}
+          rowsProcessed={rowsProcessed}
+          processingRate={processingRate}
+          status={status}
+        />
+      </div>
+
+      {/* Primary Cyber Stream Progress Track */}
+      <div className="ingest-progress-stream-bar-card">
+        <div className="stream-bar-meta-row">
+          <span className="stream-meta-status">
+            {isCompleted ? 'Pipeline Ingestion Finalized (100%)' : 'Streaming Chunks Through isolated-vm Sandbox to Database Buffer...'}
+          </span>
+          <div className="stream-bar-meta-right">
+            <span className="stream-meta-throughput text-cyan">
+              {uploadSpeedMBps > 0 ? `${uploadSpeedMBps} MB/s` : `${Math.round(processingRate / 1000)}k rows/s`}
             </span>
-          </div>
-
-          <div className="hero-metrics-pills">
-            <div className="hero-pill">
-              <span className="hero-pill-label">TRANSFERRED:</span>
-              <span className="hero-pill-val">
-                {formatBytes(bytesUploaded)} / {formatBytes(totalBytes || file?.size || 0)}
-              </span>
-            </div>
-
-            <div className="hero-pill">
-              <span className="hero-pill-label">THROUGHPUT:</span>
-              <span className="hero-pill-val text-cyan">
-                {uploadSpeedMBps > 0 ? `${uploadSpeedMBps} MB/s` : `${Math.round(processingRate / 1000)}k rows/s`}
-              </span>
-            </div>
-
-            <div className="hero-pill">
-              <span className="hero-pill-label">TIME:</span>
-              <span className="hero-pill-val">{formatElapsed(elapsedSeconds)}</span>
-            </div>
-
-            {!isCompleted && etaSeconds > 0 && (
-              <div className="hero-pill">
-                <span className="hero-pill-label">ETA:</span>
-                <span className="hero-pill-val text-emerald">~{etaSeconds}s</span>
-              </div>
-            )}
+            <span className="stream-meta-pct">{progress}%</span>
           </div>
         </div>
-
-        {/* Animated Cyber Progress Bar */}
         <div className="cyber-progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100">
           <div
             className={`cyber-progress-bar ${isProcessing ? 'is-animated' : ''}`}
@@ -213,6 +326,18 @@ export function IngestionDashboardStage({
           />
         </div>
       </div>
+
+      {/* --------------------------------------------------------------------
+          2b. Day 13: Real-Time WebSocket Telemetry Speed Chart (60 FPS)
+          Plots ingestion speed (rows/sec) over time with Recharts
+          -------------------------------------------------------------------- */}
+      <TelemetrySpeedChart
+        telemetryHistory={telemetryHistory}
+        wsStatus={wsStatus}
+        onReconnect={reconnectWs}
+        isLive={isLiveCharting}
+        onToggleLive={() => setIsLiveCharting((prev) => !prev)}
+      />
 
       {/* --------------------------------------------------------------------
           3. 4 Real-Time Telemetry KPI Cards
@@ -371,72 +496,37 @@ export function IngestionDashboardStage({
         </div>
       </div>
 
-      {/* Stream Aborted / Interrupted Banner (UI Hardening State) */}
-      {isAborted && (
-        <div className="audit-state-banner is-warn">
-          <ActivityIcon size={22} className="text-amber" />
-          <div style={{ flex: 1 }}>
-            <span className="banner-title">Streaming Ingestion Aborted</span>
-            <p>
-              Pipeline execution was interrupted by user command. <strong>{rowsProcessed.toLocaleString()} records</strong> were safely processed prior to abortion.
-              You can audit isolated DLQ records or restart the pipeline.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <Button variant="secondary" size="sm" onClick={() => setIsAuditDrawerOpen(true)}>
-              Audit DLQ Errors
-            </Button>
-            <Button variant="primary" size="sm" icon={ZapIcon} onClick={() => startIngestion()}>
-              Restart
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* --------------------------------------------------------------------
+          4b. Day 15: Error Inspection & Failed-Record Highlight View
+          Dedicated Failed Rows Inspector beneath the progress dashboard with
+          red column highlighting, inline exception debugger & streaming CSV export
+          -------------------------------------------------------------------- */}
+      <FailedRowsInspector
+        jobId={jobId}
+        liveErrors={recentErrors}
+        className="dashboard-failed-rows-inspector"
+      />
 
       {/* --------------------------------------------------------------------
-          5. Completion Celebration Banner
+          5. Day 14: Terminal States Display
+          Completed with Success, Completed with Warnings, or Aborted
           -------------------------------------------------------------------- */}
-      {isCompleted && (
-        <div className="ingest-completed-banner">
-          <div className="completed-left-group">
-            <div className="completed-check-orb">
-              <CheckCircleIcon size={26} />
-            </div>
-            <div className="completed-title-block">
-              <h3>Streaming Ingestion Completed Successfully!</h3>
-              <p>
-                Committed <strong>{rowsProcessed.toLocaleString()} records</strong> to collection{' '}
-                <code>{mappingConfig?.targetCollection || 'ecommerce_orders'}</code> in{' '}
-                <strong>{formatElapsed(elapsedSeconds)}</strong> at{' '}
-                <strong>{processingRate.toLocaleString()} rows/sec</strong>.
-                {errorCount > 0 && ` ${errorCount} anomalies isolated to DLQ for auditing.`}
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <Button
-              variant="outline"
-              size="md"
-              onClick={onBackToMapping}
-            >
-              Back to Mapping
-            </Button>
-
-            <Button
-              variant="primary"
-              size="md"
-              icon={SlidersIcon}
-              onClick={() => {
-                setIsAuditDrawerOpen(true);
-                if (onProceedToAudit) onProceedToAudit(jobId);
-              }}
-            >
-              Review Ingestion & Errors &rarr;
-            </Button>
-          </div>
-        </div>
-      )}
+      <TerminalStateBanner
+        terminalState={terminalState}
+        rowsProcessed={rowsProcessed}
+        totalRows={totalRows}
+        errorCount={errorCount}
+        targetCollection={mappingConfig?.targetCollection || 'ecommerce_orders'}
+        elapsedSeconds={elapsedSeconds}
+        processingRate={processingRate}
+        onAuditErrors={() => setIsAuditDrawerOpen(true)}
+        onRestart={() => startIngestion()}
+        onBackToMapping={onBackToMapping}
+        onProceedToAudit={() => {
+          setIsAuditDrawerOpen(true);
+          if (onProceedToAudit) onProceedToAudit(jobId);
+        }}
+      />
 
       {/* --------------------------------------------------------------------
           6. Dead Letter Queue (DLQ) Error Audit Drawer (Day 5)

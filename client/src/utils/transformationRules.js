@@ -119,6 +119,38 @@ export function applyTransformationRules(rawValue, ruleConfig = {}) {
 
   let str = String(rawValue);
 
+  // Check for custom JavaScript transformation rule
+  if (rules.customScript && rules.customScript.trim()) {
+    try {
+      const runner = new Function(
+        'value',
+        `"use strict";
+        ${rules.customScript}
+        if (typeof transform === 'function') {
+          const res = transform({ value: value });
+          return res && typeof res === 'object' && 'value' in res ? res.value : res;
+        }
+        return value;`
+      );
+      const customOut = runner(str);
+      appliedSteps.push('Custom JS Function');
+      return {
+        original: rawValue,
+        output: customOut,
+        isValid: true,
+        appliedSteps
+      };
+    } catch (err) {
+      appliedSteps.push(`JS Exception: ${err.message}`);
+      return {
+        original: rawValue,
+        output: rules.defaultValue || null,
+        isValid: false,
+        appliedSteps
+      };
+    }
+  }
+
   // 1. Trim Whitespace
   if (rules.trim) {
     const trimmed = str.trim();
@@ -254,6 +286,7 @@ export function applyTransformationRules(rawValue, ruleConfig = {}) {
  */
 export function describeActiveRules(rules = {}) {
   const tags = [];
+  if (rules.customScript) tags.push('JS Script');
   if (rules.trim) tags.push('Trim');
   if (rules.casing && rules.casing !== 'none') tags.push(rules.casing.toUpperCase());
   if (rules.typeCast && rules.typeCast !== 'string') tags.push(rules.typeCast.toUpperCase());

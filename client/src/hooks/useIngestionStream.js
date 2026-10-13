@@ -1,5 +1,22 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
+/**
+ * Evaluates terminal pipeline state (Day 14 Deliverable):
+ * - 'completed_success': Completed with 0 DLQ errors
+ * - 'completed_warnings': Completed with DLQ anomalies (>0 errors)
+ * - 'aborted': Terminated by operator or watchdog
+ * - null: In flight / active streaming / paused / idle
+ */
+export function determineTerminalState(status, errorCount = 0) {
+  if (status === 'completed') {
+    return errorCount > 0 ? 'completed_warnings' : 'completed_success';
+  }
+  if (status === 'aborted') {
+    return 'aborted';
+  }
+  return null;
+}
+
 export function useIngestionStream({
   file,
   mappingConfig,
@@ -7,7 +24,7 @@ export function useIngestionStream({
   uploadEndpoint = '/api/upload/stream',
   jobsEndpoint = '/api/jobs'
 } = {}) {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'uploading' | 'streaming' | 'completed' | 'failed' | 'aborted'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'uploading' | 'streaming' | 'paused' | 'completed' | 'failed' | 'aborted'
   const [jobId, setJobId] = useState(null);
   const [progress, setProgress] = useState(0);
   const [bytesUploaded, setBytesUploaded] = useState(0);
@@ -33,6 +50,7 @@ export function useIngestionStream({
   const simTimerRef = useRef(null);
   const lastTimeRef = useRef(0);
   const lastLoadedRef = useRef(0);
+  const simStateRef = useRef({ currentRows: 0, currentErrors: 0, targetRows: 0, fileSize: 0, activeJobId: null });
 
   const appendLog = useCallback((msg) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -64,6 +82,7 @@ export function useIngestionStream({
 
   const resetIngestion = useCallback(() => {
     cleanupConnections();
+    simStateRef.current = { currentRows: 0, currentErrors: 0, targetRows: 0, fileSize: 0, activeJobId: null };
     setStatus('idle');
     setJobId(null);
     setProgress(0);
@@ -84,11 +103,70 @@ export function useIngestionStream({
     setErrorMessage(null);
   }, [cleanupConnections]);
 
-  const abortIngestion = useCallback(() => {
+  /**
+   * Pauses streaming ingestion and halts active timers (Day 14 Deliverable)
+   */
+  const pauseIngestion = useCallback(() => {
+    if (status !== 'streaming' && status !== 'uploading') return;
+    if (simTimerRef.current) {
+      clearInterval(simTimerRef.current);
+      simTimerRef.current = null;
+    }
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    setStatus('paused');
+    appendLog('⏸️ Ingestion pipeline paused by operator. Micro-batch buffers in standby.');
+  }, [status, appendLog]);
+
+  /**
+   * Resumes streaming ingestion from paused state (Day 14 Deliverable)
+   */
+  const resumeIngestion = useCallback((resumeFn = null) => {
+    if (status !== 'paused') return;
+    setStatus('streaming');
+    appendLog('▶️ Ingestion pipeline resumed. Continuing stream consumption.');
+
+    // Resume elapsed timer
+    elapsedTimerRef.current = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+
+    if (typeof resumeFn === 'function') {
+      resumeFn();
+    }
+  }, [status, appendLog]);
+
+  /**
+   * Aborts stream execution, closes connections, and purges buffers (Day 14 Deliverable)
+   */
+  const abortIngestion = useCallback((reason = 'USER_ABORT', onWebSocketAbort = null) => {
     cleanupConnections();
+    if (typeof onWebSocketAbort === 'function') {
+      try {
+        onWebSocketAbort(reason);
+      } catch (wsErr) {
+        console.warn('[Abort Signal Callback Error]', wsErr);
+      }
+    }
+    // Attempt REST abort fallback if jobId exists
+    if (jobId && typeof fetch !== 'undefined') {
+      try {
+        fetch(`${jobsEndpoint}/${jobId}/abort`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason, timestamp: Date.now() })
+        }).catch(() => {});
+      } catch {}
+    }
     setStatus('aborted');
-    appendLog('⚠️ Streaming ingestion aborted by user.');
-  }, [cleanupConnections, appendLog]);
+    appendLog(`🛑 Ingestion pipeline terminated by operator (${reason}). V8 isolate memory purged.`);
+  }, [cleanupConnections, jobId, jobsEndpoint, appendLog]);
 
   // Connect to Dev 2's Server-Sent Events (SSE) telemetry route
   const connectSSE = useCallback((activeJobId, estimatedTotal) => {
@@ -179,14 +257,18 @@ export function useIngestionStream({
   }, [jobsEndpoint]);
 
   // High-fidelity client-side fallback simulation (if backend offline during testing)
-  const runSimulatedStream = useCallback((activeJobId, targetRows, fileSize) => {
-    let currentRows = 0;
-    let currentErrors = 0;
+  const runSimulatedStream = useCallback((activeJobId, targetRows, fileSize, initialRows = 0, initialErrors = 0) => {
+    let currentRows = initialRows;
+    let currentErrors = initialErrors;
     const intervalMs = 150;
     const stepRows = Math.max(1200, Math.floor(targetRows / 30));
+    simStateRef.current = { currentRows, currentErrors, targetRows, fileSize, activeJobId };
 
     simTimerRef.current = setInterval(() => {
       currentRows = Math.min(targetRows, currentRows + stepRows);
+      simStateRef.current.currentRows = currentRows;
+      simStateRef.current.currentErrors = currentErrors;
+
       const pct = Math.min(100, Math.round((currentRows / targetRows) * 100));
       const simulatedRate = Math.round(stepRows / (intervalMs / 1000) + (Math.random() * 2000 - 1000));
       const batches = Math.floor(currentRows / 1000);
@@ -194,6 +276,7 @@ export function useIngestionStream({
       // Occasional bad rows simulated
       if (Math.random() > 0.65 && currentErrors < Math.max(3, Math.floor(targetRows * 0.004))) {
         currentErrors += 1;
+        simStateRef.current.currentErrors = currentErrors;
         const errObj = {
           rowNumber: currentRows,
           failedField: Math.random() > 0.5 ? 'timestamp' : 'unitPrice',
@@ -335,6 +418,8 @@ export function useIngestionStream({
     };
   }, [cleanupConnections]);
 
+  const terminalState = determineTerminalState(status, errorCount);
+
   return {
     status,
     jobId,
@@ -353,7 +438,12 @@ export function useIngestionStream({
     uploadSpeedMBps,
     streamDurationMs,
     errorMessage,
+    isPaused: status === 'paused',
+    isProcessing: status === 'streaming' || status === 'uploading',
+    terminalState,
     startIngestion,
+    pauseIngestion,
+    resumeIngestion,
     abortIngestion,
     resetIngestion
   };

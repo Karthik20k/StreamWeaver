@@ -9,6 +9,7 @@ import { TransformationDrawer } from './TransformationDrawer';
 import { AutoMapReportModal } from './AutoMapReportModal';
 import { ValidationDrawer } from './ValidationDrawer';
 import { MappingJsonViewerModal } from './MappingJsonViewerModal';
+import { ScriptEditorModal } from './ScriptEditorModal';
 import { useSchemaMapping } from '../../hooks/useSchemaMapping';
 import { Button } from '../common/Button';
 import { 
@@ -18,7 +19,8 @@ import {
   ArrowRightIcon, 
   DatabaseIcon, 
   CloudUploadIcon,
-  SparklesIcon 
+  SparklesIcon,
+  CodeIcon 
 } from '../common/Icons';
 
 export function SchemaMappingStage({
@@ -30,6 +32,7 @@ export function SchemaMappingStage({
 }) {
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
   const [isValidationDrawerOpen, setIsValidationDrawerOpen] = useState(false);
+  const [isScriptEditorOpen, setIsScriptEditorOpen] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState({
     isOpen: false,
     sourceColumn: null,
@@ -69,6 +72,7 @@ export function SchemaMappingStage({
     mappings,
     reverseMappings,
     transformations,
+    customScript,
     autoMatchReport,
     validation,
     setSelectedSchemaId,
@@ -82,6 +86,7 @@ export function SchemaMappingStage({
     setTransformation,
     resetTransformation,
     getTransformation,
+    setCustomScript,
     stats,
     exportConfig
   } = useSchemaMapping({
@@ -130,6 +135,8 @@ export function SchemaMappingStage({
         onAutoMap={() => autoMapAll()}
         onClearMappings={clearAllMappings}
         onOpenJsonModal={() => setIsJsonModalOpen(true)}
+        onOpenScriptEditor={() => setIsScriptEditorOpen(true)}
+        hasCustomScript={Boolean(customScript?.trim())}
         mappedCount={stats.mappedCount}
         totalSource={stats.totalSource}
       />
@@ -154,11 +161,18 @@ export function SchemaMappingStage({
         />
 
         {/* Center Connection Pipeline Bridge */}
-        <div className="mapping-bridge-column" aria-hidden="true">
+        <div className="mapping-bridge-column">
           <div className="bridge-pipe-line" />
-          <div className="bridge-icon-orb" title="Schema Transform Stream Bridge">
-            <SlidersIcon size={20} />
-          </div>
+          <button 
+            type="button"
+            className={`bridge-icon-orb ${customScript ? 'has-script' : ''}`}
+            onClick={() => setIsScriptEditorOpen(true)}
+            title="Open dynamic JavaScript transformation workspace (Monaco Editor)"
+            aria-label="Open JavaScript code editor"
+          >
+            <CodeIcon size={20} className="text-cyan" />
+            {customScript && <span className="orb-script-pulse" />}
+          </button>
           <div className="bridge-pipe-line" />
         </div>
 
@@ -280,6 +294,18 @@ export function SchemaMappingStage({
         transformations={transformations}
         activeSchema={activeSchema}
         stats={stats}
+      />
+
+      {/* Day 11: In-Browser Script Editor Workspace Modal (Monaco) */}
+      <ScriptEditorModal
+        isOpen={isScriptEditorOpen}
+        onClose={() => setIsScriptEditorOpen(false)}
+        initialScript={customScript}
+        onSaveScript={setCustomScript}
+        sampleRows={parsedRows}
+        sourceHeaders={sourceHeaders}
+        targetFields={targetFields}
+        activeSchema={activeSchema}
       />
     </div>
   );

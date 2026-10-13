@@ -15,6 +15,7 @@ export function useSchemaMapping({
   const [selectedSchemaId, setSelectedSchemaId] = useState(initialSchemaId);
   const [mappings, setMappings] = useState({});
   const [transformations, setTransformations] = useState({});
+  const [customScript, setCustomScript] = useState('');
   const [autoMatchReport, setAutoMatchReport] = useState(null);
   const [isLoadingSchemas, setIsLoadingSchemas] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -206,6 +207,7 @@ export function useSchemaMapping({
   const clearAllMappings = useCallback(() => {
     setMappings({});
     setTransformations({});
+    setCustomScript('');
     setAutoMatchReport(null);
   }, []);
 
@@ -330,6 +332,7 @@ export function useSchemaMapping({
       targetCollection: activeSchema.targetCollection,
       mappingRules: { ...mappings },
       transformRules: { ...transformations },
+      customScript: customScript || '',
       validation: {
         isValid: validation.isValid,
         canProceed: validation.canProceed,
@@ -341,10 +344,11 @@ export function useSchemaMapping({
         totalTargetFields: targetFields.length,
         mappedPairsCount: Object.keys(mappings).length,
         allRequiredMapped: validation.isValid,
+        hasCustomScript: Boolean(customScript && customScript.trim()),
         generatedAt: new Date().toISOString()
       }
     };
-  }, [activeSchema, mappings, transformations, validation, sourceHeaders, targetFields]);
+  }, [activeSchema, mappings, transformations, customScript, validation, sourceHeaders, targetFields]);
 
   return {
     schemas,
@@ -354,6 +358,7 @@ export function useSchemaMapping({
     mappings,
     reverseMappings,
     transformations,
+    customScript,
     inferredTypes,
     autoMatchReport,
     validation,
@@ -370,6 +375,7 @@ export function useSchemaMapping({
     setTransformation,
     resetTransformation,
     getTransformation,
+    setCustomScript,
     stats,
     exportConfig
   };
