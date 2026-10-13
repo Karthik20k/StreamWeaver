@@ -1,10 +1,12 @@
 import React from 'react';
-import { 
-  FileSpreadsheetIcon, 
-  SearchIcon, 
-  ZapIcon, 
-  CloudUploadIcon, 
-  ActivityIcon 
+import {
+  FileSpreadsheetIcon,
+  SearchIcon,
+  ZapIcon,
+  CloudUploadIcon,
+  ActivityIcon,
+  XIcon,
+  SlidersIcon
 } from '../common/Icons';
 import { Button } from '../common/Button';
 import { formatBytes } from '../../utils/fileHelpers';
@@ -18,17 +20,18 @@ export function PreviewToolbar({
   onSearchChange,
   onOpenBenchmark,
   onOpenUpload,
+  onProceedToMapping,
   onBackToUpload
 }) {
   const fps = useFPSMonitor();
 
-  const delimiterName = metadata?.detectedDelimiter === '\t' 
-    ? 'Tab' 
+  const delimiterName = metadata?.detectedDelimiter === '\t'
+    ? 'Tab'
     : metadata?.detectedDelimiter === ';'
-    ? 'Semicolon'
-    : metadata?.detectedDelimiter === '|'
-    ? 'Pipe'
-    : metadata?.detectedDelimiter || 'Comma';
+      ? 'Semicolon'
+      : metadata?.detectedDelimiter === '|'
+        ? 'Pipe'
+        : metadata?.detectedDelimiter || 'Comma';
 
   return (
     <div className="preview-toolbar-card">
@@ -89,6 +92,16 @@ export function PreviewToolbar({
             onChange={(e) => onSearchChange(e.target.value)}
             className="search-input"
           />
+          {searchQuery && (
+            <button
+              className="search-clear-btn"
+              onClick={() => onSearchChange('')}
+              title="Clear search filter"
+              aria-label="Clear filter"
+            >
+              <XIcon size={14} />
+            </button>
+          )}
         </div>
 
         <Button
@@ -102,13 +115,26 @@ export function PreviewToolbar({
         </Button>
 
         <Button
-          variant="primary"
+          variant="secondary"
           size="sm"
           icon={CloudUploadIcon}
           onClick={onOpenUpload}
+          title="Direct stream to backend"
         >
-          Stream to Backend
+          Direct Stream
         </Button>
+
+        {onProceedToMapping && (
+          <Button
+            variant="primary"
+            size="sm"
+            icon={SlidersIcon}
+            onClick={onProceedToMapping}
+            title="Configure Schema Mapping & Rules"
+          >
+            Schema Mapping &rarr;
+          </Button>
+        )}
 
         <Button
           variant="ghost"

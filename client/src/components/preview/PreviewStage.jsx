@@ -10,14 +10,15 @@ export function PreviewStage({
   file,
   metadata,
   parsedRows = [],
-  onBackToUpload
+  onBackToUpload,
+  onProceedToMapping
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isBenchmarkOpen, setIsBenchmarkOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   const uploadState = useStreamingUpload({
-    apiEndpoint: 'http://localhost:5000/api/upload/stream'
+    apiEndpoint: '/api/upload/stream'
   });
 
   const headers = metadata?.headers || (parsedRows[0] ? Object.keys(parsedRows[0]) : []);
@@ -32,6 +33,7 @@ export function PreviewStage({
         onSearchChange={setSearchQuery}
         onOpenBenchmark={() => setIsBenchmarkOpen(true)}
         onOpenUpload={() => setIsUploadOpen(true)}
+        onProceedToMapping={onProceedToMapping}
         onBackToUpload={onBackToUpload}
       />
 

@@ -54,8 +54,13 @@ export const SAMPLE_DATASETS = [
         const clr = clearingCodes[i % clearingCodes.length];
         const debit = (i % 2 === 0) ? (125 + (i * 14.75)).toFixed(2) : '0.00';
         const credit = (i % 2 !== 0) ? (125 + (i * 14.75)).toFixed(2) : '0.00';
+<<<<<<< HEAD
         const day = (1 + (i % 28)).toString().padStart(2, '0');
         rows.push(`TXN-90928-${i},ACC-00${4000 + (i % 80)},${acct},${debit},${credit},${curr},${clr},2026-09-${day}`);
+=======
+        const dateNum = (1 + (i % 28)).toString().padStart(2, '0');
+        rows.push(`TXN-90928-${i},ACC-00${4000 + (i % 80)},${acct},${debit},${credit},${curr},${clr},2026-09-${dateNum}`);
+>>>>>>> main
       }
       return {
         fileName: 'banking_ledger_1000_sample.csv',

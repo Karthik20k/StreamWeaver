@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> main
 # StreamWeaver: High-Throughput No-Code ETL Pipeline
 
 StreamWeaver is an enterprise-grade, memory-safe ETL (Extract, Transform, Load) platform engineered to upload, transform, and ingest massive datasets (e.g., multi-gigabyte CSV or JSON files) into MongoDB without exceeding Node.js V8 memory limits (Heap Out of Memory) or freezing client browser tabs.
@@ -73,7 +76,10 @@ npm run dev:server
 # Run frontend development server
 npm run dev:client
 ```
+<<<<<<< HEAD
 =======
 # StreamWeaver
 A high-throughput no-code ETL pipeline for processing massive datasets with memory-safe Node.js streams and MongoDB.
 >>>>>>> 87bf844501bc9dc4381b2fff2abc57af77f00367
+=======
+>>>>>>> main

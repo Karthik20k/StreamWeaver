@@ -8,9 +8,13 @@
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "start:server": "npm --prefix server start",
+<<<<<<< HEAD
     "build:client": "npm --prefix client run build",
     "test:server:memory": "npm --prefix server run test:memory",
     "test:server:1gb": "npm --prefix server run test:1gb"
+=======
+    "build:client": "npm --prefix client run build"
+>>>>>>> main
   },
   "keywords": [
     "etl",

@@ -9,11 +9,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
+<<<<<<< HEAD
+=======
+    "@monaco-editor/react": "^4.7.0",
+>>>>>>> main
     "lucide-react": "^1.47.0",
     "papaparse": "^5.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+<<<<<<< HEAD
     "react-window": "^1.8.11"
+=======
+    "react-window": "^1.8.11",
+    "recharts": "^3.10.1"
+>>>>>>> main
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

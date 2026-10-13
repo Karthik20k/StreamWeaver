@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 
 export function useStreamingUpload(options = {}) {
   const {
-    apiEndpoint = 'http://localhost:5000/api/upload/stream',
+    apiEndpoint = '/api/upload/stream',
     fieldName = 'file'
   } = options;
 
@@ -52,7 +52,7 @@ export function useStreamingUpload(options = {}) {
     setError('Upload was cancelled.');
   }, []);
 
-  const startUpload = useCallback(async (file, useSimulation = false) => {
+  const startUpload = useCallback(async (file, useSimulation = false, extraFields = {}) => {
     if (!file) return;
 
     resetUpload();
@@ -108,6 +108,12 @@ export function useStreamingUpload(options = {}) {
 
     const formData = new FormData();
     formData.append(fieldName, file, file.name);
+
+    if (extraFields && typeof extraFields === 'object') {
+      for (const [k, v] of Object.entries(extraFields)) {
+        formData.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+      }
+    }
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {

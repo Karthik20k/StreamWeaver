@@ -1,6 +1,10 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { VariableSizeGrid } from 'react-window';
+<<<<<<< HEAD
 import { calculateColumnWidths } from '../../utils/columnAutoSizer';
+=======
+import { calculateColumnWidths, inferColumnTypes } from '../../utils/columnAutoSizer';
+>>>>>>> main
 import { CheckIcon, CopyIcon, SparklesIcon } from '../common/Icons';
 
 export function VirtualizedDataGrid({
@@ -19,6 +23,7 @@ export function VirtualizedDataGrid({
     height: 560
   });
 
+<<<<<<< HEAD
   const [copiedValue, setCopiedValue] = useState(null);
 
   const filteredRows = useMemo(() => {
@@ -32,6 +37,47 @@ export function VirtualizedDataGrid({
       });
     });
   }, [rows, searchQuery]);
+=======
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'none' });
+  const [copiedValue, setCopiedValue] = useState(null);
+
+  const columnTypes = useMemo(() => {
+    return inferColumnTypes(headers, rows);
+  }, [headers, rows]);
+
+  const displayRows = useMemo(() => {
+    let list = rows;
+    if (searchQuery && searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      list = list.filter((row) => {
+        return Object.values(row).some((val) => {
+          if (val === null || val === undefined) return false;
+          return String(val).toLowerCase().includes(query);
+        });
+      });
+    }
+
+    if (sortConfig.key && sortConfig.direction !== 'none') {
+      const key = sortConfig.key;
+      const isAsc = sortConfig.direction === 'asc';
+      list = [...list].sort((a, b) => {
+        const valA = a[key];
+        const valB = b[key];
+        if (valA === valB) return 0;
+        if (valA === null || valA === undefined) return 1;
+        if (valB === null || valB === undefined) return -1;
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return isAsc ? valA - valB : valB - valA;
+        }
+        const strA = String(valA).toLowerCase();
+        const strB = String(valB).toLowerCase();
+        return isAsc ? strA.localeCompare(strB) : strB.localeCompare(strA);
+      });
+    }
+
+    return list;
+  }, [rows, searchQuery, sortConfig]);
+>>>>>>> main
 
   const { indexColWidth, columnWidths, totalWidth, getColumnWidth } = useMemo(() => {
     return calculateColumnWidths(headers, rows);
@@ -81,6 +127,30 @@ export function VirtualizedDataGrid({
     }
   }, []);
 
+<<<<<<< HEAD
+=======
+  const handleHeaderWheel = useCallback((e) => {
+    if (!gridRef.current || !headerViewportRef.current) return;
+    if (Math.abs(e.deltaX) > 0) {
+      const newScrollLeft = headerViewportRef.current.scrollLeft + e.deltaX;
+      headerViewportRef.current.scrollLeft = newScrollLeft;
+      gridRef.current.scrollTo({ scrollLeft: newScrollLeft });
+    }
+  }, []);
+
+  const handleHeaderClick = useCallback((colName) => {
+    setSortConfig((prev) => {
+      if (prev.key !== colName) {
+        return { key: colName, direction: 'asc' };
+      }
+      if (prev.direction === 'asc') {
+        return { key: colName, direction: 'desc' };
+      }
+      return { key: null, direction: 'none' };
+    });
+  }, []);
+
+>>>>>>> main
   const handleCellClick = useCallback((val) => {
     if (val === null || val === undefined) return;
     const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
@@ -91,7 +161,11 @@ export function VirtualizedDataGrid({
   }, []);
 
   const Cell = useCallback(({ columnIndex, rowIndex, style }) => {
+<<<<<<< HEAD
     const row = filteredRows[rowIndex];
+=======
+    const row = displayRows[rowIndex];
+>>>>>>> main
     if (!row) return null;
 
     if (columnIndex === 0) {
@@ -140,7 +214,11 @@ export function VirtualizedDataGrid({
         {content}
       </div>
     );
+<<<<<<< HEAD
   }, [filteredRows, headers, handleCellClick]);
+=======
+  }, [displayRows, headers, handleCellClick]);
+>>>>>>> main
 
   if (!rows || rows.length === 0) {
     return (
@@ -155,7 +233,11 @@ export function VirtualizedDataGrid({
   }
 
   const columnCount = headers.length + 1;
+<<<<<<< HEAD
   const rowCount = filteredRows.length;
+=======
+  const rowCount = displayRows.length;
+>>>>>>> main
   const rowHeight = 40;
 
   return (
@@ -164,6 +246,10 @@ export function VirtualizedDataGrid({
         className="grid-header-viewport" 
         ref={headerViewportRef}
         onScroll={handleHeaderScroll}
+<<<<<<< HEAD
+=======
+        onWheel={handleHeaderWheel}
+>>>>>>> main
         style={{ width: containerDimensions.width }}
       >
         <div className="grid-header-row" style={{ width: Math.max(totalWidth, containerDimensions.width) }}>
@@ -176,6 +262,7 @@ export function VirtualizedDataGrid({
 
           {headers.map((colName, idx) => {
             const width = columnWidths[idx] || 140;
+<<<<<<< HEAD
             return (
               <div
                 key={colName}
@@ -185,13 +272,38 @@ export function VirtualizedDataGrid({
               >
                 <span className="header-title-text">{colName}</span>
                 <span className="header-type-tag">col</span>
+=======
+            const colType = columnTypes[colName] || 'str';
+            const isSorted = sortConfig.key === colName;
+            return (
+              <div
+                key={colName}
+                className={`grid-header-cell ${isSorted ? 'is-sorted' : ''}`}
+                style={{ width, minWidth: width }}
+                onClick={() => handleHeaderClick(colName)}
+                title={`Click to sort by ${colName}`}
+              >
+                <span className="header-title-text">{colName}</span>
+                <div className="flex items-center gap-1">
+                  <span className={`header-type-tag type-${colType}`}>{colType}</span>
+                  {isSorted && (
+                    <span className="header-sort-indicator">
+                      {sortConfig.direction === 'asc' ? '▲' : '▼'}
+                    </span>
+                  )}
+                </div>
+>>>>>>> main
               </div>
             );
           })}
         </div>
       </div>
 
+<<<<<<< HEAD
       {filteredRows.length > 0 ? (
+=======
+      {displayRows.length > 0 ? (
+>>>>>>> main
         <div className="grid-body-viewport">
           <VariableSizeGrid
             ref={gridRef}
@@ -219,8 +331,19 @@ export function VirtualizedDataGrid({
         <div className="footer-stats-group">
           <div className="footer-stat-item">
             <span>Showing:</span>
+<<<<<<< HEAD
             <strong>{filteredRows.length.toLocaleString()} rows</strong>
             {searchQuery && <span className="text-cyan text-xs">(filtered)</span>}
+=======
+            <strong>{displayRows.length.toLocaleString()} rows</strong>
+            {(searchQuery || sortConfig.direction !== 'none') && (
+              <span className="text-cyan text-xs">
+                {searchQuery ? '(filtered' : ''}
+                {searchQuery && sortConfig.direction !== 'none' ? ', ' : ''}
+                {sortConfig.direction !== 'none' ? `sorted ${sortConfig.direction})` : searchQuery ? ')' : ''}
+              </span>
+            )}
+>>>>>>> main
           </div>
           <div className="footer-stat-item">
             <span>Columns:</span>
