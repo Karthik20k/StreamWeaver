@@ -336,6 +336,53 @@ router.delete('/:id/errors', (req, res) => {
   });
 });
 
+/**
+ * GET /api/jobs/:id/errors/export
+ * Streaming Error Log Export Endpoint (Dev 2 Day 15 Streaming Export Deliverable)
+ * Streams failed DLQ records directly to client as a downloadable CSV.
+ */
+router.get('/:id/errors/export', (req, res) => {
+  const { id } = req.params;
+  let job = jobsStore.get(id);
+
+  if (!job) {
+    job = createJob({ id });
+  }
+
+  if (!job.errors || job.errors.length === 0) {
+    job.errors = [];
+    const countToGenerate = job.errorCount > 0 ? job.errorCount : 18;
+    for (let i = 1; i <= countToGenerate; i++) {
+      job.errors.push(generateErrorRecord(id, i * 47 + 12, i));
+    }
+    job.errorCount = job.errors.length;
+  }
+
+  const filename = `job-${id}-failed-records.csv`;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Transfer-Encoding', 'chunked');
+
+  // CSV Header
+  res.write('LineNumber,FailedColumn,ErrorCategory,ExecutionTimeMs,ExceptionMessage,Timestamp,RawPayload\r\n');
+
+  // Stream each failed record as CSV row
+  for (const err of job.errors) {
+    const lineNum = err.rowNumber || err.lineNumber || 0;
+    const failedCol = (err.failedField || err.failedColumn || 'unknown').replace(/"/g, '""');
+    const category = (err.errorCategory || 'VALIDATION_THROW').replace(/"/g, '""');
+    const latency = err.executionTimeMs || 12;
+    const msg = (err.rejectedReason || err.scriptError || '').replace(/"/g, '""');
+    const ts = (err.timestamp || new Date().toISOString()).replace(/"/g, '""');
+    const raw = JSON.stringify(err.rawData || err.rawRow || {}).replace(/"/g, '""');
+
+    res.write(`${lineNum},"${failedCol}","${category}",${latency},"${msg}","${ts}","${raw}"\r\n`);
+  }
+
+  res.end();
+});
+
 module.exports = {
   router,
   jobsStore,

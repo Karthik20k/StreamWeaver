@@ -10,6 +10,7 @@ import { CountdownClockWidget } from './CountdownClockWidget';
 import { TelemetrySpeedChart } from './TelemetrySpeedChart';
 import { IngestionControlCenter } from './IngestionControlCenter';
 import { TerminalStateBanner } from './TerminalStateBanner';
+import { FailedRowsInspector } from './FailedRowsInspector';
 import { Button } from '../common/Button';
 import { 
   DatabaseIcon, 
@@ -494,6 +495,17 @@ export function IngestionDashboardStage({
           </div>
         </div>
       </div>
+
+      {/* --------------------------------------------------------------------
+          4b. Day 15: Error Inspection & Failed-Record Highlight View
+          Dedicated Failed Rows Inspector beneath the progress dashboard with
+          red column highlighting, inline exception debugger & streaming CSV export
+          -------------------------------------------------------------------- */}
+      <FailedRowsInspector
+        jobId={jobId}
+        liveErrors={recentErrors}
+        className="dashboard-failed-rows-inspector"
+      />
 
       {/* --------------------------------------------------------------------
           5. Day 14: Terminal States Display

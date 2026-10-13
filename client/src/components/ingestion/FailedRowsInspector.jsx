@@ -16,7 +16,8 @@ import {
   CheckIcon,
   CodeIcon,
   ClockIcon,
-  ZapIcon
+  ZapIcon,
+  DownloadIcon
 } from '../common/Icons';
 import { ERROR_CATEGORIES, useFailedRowsInspector } from '../../hooks/useFailedRowsInspector';
 
@@ -209,6 +210,7 @@ export function FailedRowsInspector({
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'cards'
   const [expandedRowIds, setExpandedRowIds] = useState(new Set());
   const [copiedTarget, setCopiedTarget] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const {
     filteredRows,
@@ -238,6 +240,67 @@ export function FailedRowsInspector({
     navigator.clipboard.writeText(text);
     setCopiedTarget(targetId);
     setTimeout(() => setCopiedTarget(null), 2000);
+  };
+
+  /**
+   * Streaming CSV Export Handler
+   * Connects to Developer 2's streaming export endpoint (/api/jobs/:id/errors/export)
+   * with resilient client-side fallback formatting RFC-4180 CSV
+   * Dev 3 Day 15 Part 3 Deliverable
+   */
+  const handleDownloadCsv = async () => {
+    if (totalCount === 0) return;
+    setIsExporting(true);
+
+    try {
+      // 1. Primary: Stream directly from Developer 2's streaming endpoint
+      const exportUrl = `/api/jobs/${jobId || 'current'}/errors/export`;
+      const response = await fetch(exportUrl);
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `job-${jobId || 'stream'}-error-log.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return;
+      }
+      throw new Error(`Export HTTP ${response.status}`);
+    } catch (err) {
+      console.warn('[FailedRowsInspector] Streaming export endpoint fallback triggered:', err);
+
+      // 2. Resilient client-side CSV generator fallback
+      const rowsToExport = filteredRows.length > 0 ? filteredRows : paginatedRows;
+      const headers = ['LineNumber', 'FailedColumn', 'ErrorCategory', 'ExecutionTimeMs', 'ExceptionMessage', 'Timestamp', 'RawPayload'];
+      const csvLines = [
+        headers.join(','),
+        ...rowsToExport.map((r) => [
+          r.lineNumber,
+          `"${(r.failedColumn || '').replace(/"/g, '""')}"`,
+          `"${(r.errorCategory || '').replace(/"/g, '""')}"`,
+          r.executionTimeMs || 0,
+          `"${(r.scriptError || '').replace(/"/g, '""')}"`,
+          `"${(r.timestamp || new Date().toISOString()).replace(/"/g, '""')}"`,
+          `"${JSON.stringify(r.rawRow || {}).replace(/"/g, '""')}"`
+        ].join(','))
+      ];
+
+      const blob = new Blob([csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `job-${jobId || 'stream'}-error-log.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const toggleRowExpanded = (rowId) => {
@@ -322,6 +385,19 @@ export function FailedRowsInspector({
             title="Synchronize failed rows with backend DLQ"
           >
             {isLoading ? 'Syncing...' : 'Sync Feed'}
+          </Button>
+
+          {/* Download Error Log (CSV) Button - Day 15 Deliverable */}
+          <Button
+            variant="primary"
+            size="sm"
+            icon={DownloadIcon}
+            onClick={handleDownloadCsv}
+            disabled={isExporting || totalCount === 0}
+            className="download-error-log-btn"
+            title="Download full failed records CSV log from streaming export endpoint"
+          >
+            {isExporting ? 'Exporting...' : 'Download Error Log (CSV)'}
           </Button>
         </div>
       </div>
