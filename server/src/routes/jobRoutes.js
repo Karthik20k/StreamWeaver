@@ -4,18 +4,20 @@
  * Live Telemetry, Error Auditing, and Job Cleanup routes for StreamWeaver ingestion jobs.
  *
  * Routes exposed:
- *   GET  /api/jobs/:id/events    - Server-Sent Events (SSE) live telemetry stream
- *   GET  /api/jobs/:id/progress  - Lightweight polling snapshot of real-time metrics
- *   GET  /api/jobs/:id/errors    - Paginated fetch of rejected rows from DLQ + UploadError
- *   POST /api/jobs/:id/cancel    - Soft-cancel an in-flight or partial job
- *   POST /api/jobs/cleanup       - Trigger cleanup routine for aborted / failed jobs
- *   GET  /api/jobs               - List all jobs with optional status filter
- *   GET  /api/jobs/:id           - Fetch a single job record
+ *   GET  /api/jobs/:id/events         - Server-Sent Events (SSE) live telemetry stream
+ *   GET  /api/jobs/:id/progress       - Lightweight polling snapshot of real-time metrics
+ *   GET  /api/jobs/:id/errors/export  - Streaming CSV export of DLQ rows via database cursor
+ *   GET  /api/jobs/:id/errors         - Paginated fetch of rejected rows from DLQ + UploadError
+ *   POST /api/jobs/:id/cancel         - Soft-cancel an in-flight or partial job
+ *   POST /api/jobs/cleanup            - Trigger cleanup routine for aborted / failed jobs
+ *   GET  /api/jobs                    - List all jobs with optional status filter
+ *   GET  /api/jobs/:id                - Fetch a single job record
  */
 
 'use strict';
 
 const express = require('express');
+const { Transform, pipeline } = require('node:stream');
 const IngestionJob = require('../models/IngestionJob');
 const DeadLetterQueue = require('../models/DeadLetterQueue');
 const UploadError = require('../models/UploadError');
@@ -26,6 +28,89 @@ const router = express.Router();
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Safely escape values for standard RFC 4180 CSV output.
+ * Handles objects, strings with commas/quotes/newlines, and null/undefined values.
+ */
+function escapeCsvValue(val) {
+  if (val === null || val === undefined) return '';
+  let str;
+  if (typeof val === 'object') {
+    try {
+      str = JSON.stringify(val);
+    } catch {
+      str = String(val);
+    }
+  } else {
+    str = String(val);
+  }
+  if (/[",\r\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+/**
+ * Escapes characters with special regex meaning.
+ */
+function escapeRegex(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Transform stream that serializes streaming DLQ document objects into CSV rows.
+ * Implements chunk-by-chunk serialization with zero memory buffering.
+ */
+class DLQToCsvStream extends Transform {
+  constructor(columns) {
+    super({ objectMode: true });
+    this.columns = columns && columns.length > 0
+      ? columns
+      : ['jobId', 'rowNumber', 'errorType', 'failedField', 'rejectedReason', 'rawData', 'details', 'timestamp'];
+    this.headerWritten = false;
+  }
+
+  _transform(doc, encoding, callback) {
+    try {
+      if (!this.headerWritten) {
+        this.push(this.columns.map(escapeCsvValue).join(',') + '\r\n');
+        this.headerWritten = true;
+      }
+      const line = this.columns.map((col) => {
+        let val;
+        if (col === 'timestamp') {
+          val = doc.timestamp
+            ? new Date(doc.timestamp).toISOString()
+            : doc.createdAt
+            ? new Date(doc.createdAt).toISOString()
+            : '';
+        } else if (col === 'rejectedReason') {
+          val = doc.rejectedReason ?? doc.errorMessage ?? '';
+        } else if (col === 'rawData') {
+          val = doc.rawData ?? doc.rawRow ?? '';
+        } else {
+          val = doc[col] ?? '';
+        }
+        return escapeCsvValue(val);
+      });
+      this.push(line.join(',') + '\r\n');
+      callback();
+    } catch (err) {
+      callback(err);
+    }
+  }
+
+  _flush(callback) {
+    if (!this.headerWritten) {
+      // For an empty result set, still write the CSV headers
+      this.push(this.columns.map(escapeCsvValue).join(',') + '\r\n');
+      this.headerWritten = true;
+    }
+    callback();
+  }
+}
 
 /**
  * Build a unified progress snapshot object from an IngestionJob document.
@@ -368,6 +453,136 @@ router.get('/:id/events', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/jobs/:id/errors/export
+// Streaming export endpoint using a database cursor to stream DLQ rows
+// directly as a CSV download without memory buffering.
+//
+// Query params:
+//   category   - filter by error category / errorType (e.g. 'VALIDATION_FAILED')
+//   field      - filter / search by failedField
+//   search     - field-level or text search across errors
+//   sortOrder  - 'asc' | 'desc' row order (default: 'asc')
+//   columns    - comma-separated list of columns to include
+// ---------------------------------------------------------------------------
+router.get('/:id/errors/export', async (req, res) => {
+  const { id } = req.params;
+  const {
+    category,
+    errorCategory,
+    errorType,
+    field,
+    failedField,
+    fieldName,
+    search,
+    q,
+    sortOrder = 'asc',
+    columns
+  } = req.query;
+
+  try {
+    const job = await IngestionJob.findOne({ jobId: id })
+      .select('jobId status fileName')
+      .lean();
+
+    if (!job) {
+      return res.status(404).json({ error: `Job '${id}' not found.` });
+    }
+
+    const dlqFilter = { jobId: id };
+
+    // 1. Error Category filter
+    const cat = category || errorCategory || errorType;
+    if (cat) {
+      const catList = Array.isArray(cat)
+        ? cat
+        : String(cat).split(',').map(s => s.trim()).filter(Boolean);
+      if (catList.length === 1) {
+        dlqFilter.errorType = { $regex: new RegExp(`^${escapeRegex(catList[0])}$`, 'i') };
+      } else if (catList.length > 1) {
+        dlqFilter.errorType = { $in: catList.map(c => new RegExp(`^${escapeRegex(c)}$`, 'i')) };
+      }
+    }
+
+    // 2. Field-level filter / search
+    const targetField = field || failedField || fieldName;
+    if (targetField) {
+      const escapedField = escapeRegex(String(targetField).trim());
+      dlqFilter.failedField = { $regex: new RegExp(escapedField, 'i') };
+    }
+
+    // 3. Search filter
+    const searchQuery = search || q;
+    if (searchQuery) {
+      const escapedSearch = escapeRegex(String(searchQuery).trim());
+      const searchRegex = { $regex: new RegExp(escapedSearch, 'i') };
+      const searchConditions = [
+        { failedField: searchRegex },
+        { rejectedReason: searchRegex },
+        { errorMessage: searchRegex },
+        { errorType: searchRegex }
+      ];
+      if (dlqFilter.$or) {
+        dlqFilter.$and = [
+          { $or: dlqFilter.$or },
+          { $or: searchConditions }
+        ];
+        delete dlqFilter.$or;
+      } else {
+        dlqFilter.$or = searchConditions;
+      }
+    }
+
+    const sortDir = sortOrder === 'desc' ? -1 : 1;
+
+    // Database cursor: streams records from MongoDB without memory buffering
+    const cursor = DeadLetterQueue.find(dlqFilter)
+      .sort({ rowNumber: sortDir })
+      .lean()
+      .cursor();
+
+    const exportFilename = `job_${id}_errors_${Date.now()}.csv`;
+
+    // Configure headers for streaming CSV download
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${exportFilename}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    const selectedColumns = columns
+      ? String(columns).split(',').map(c => c.trim()).filter(Boolean)
+      : ['jobId', 'rowNumber', 'errorType', 'failedField', 'rejectedReason', 'rawData', 'details', 'timestamp'];
+
+    const csvTransform = new DLQToCsvStream(selectedColumns);
+
+    // Cancel / destroy cursor if client disconnects early
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        if (typeof cursor.destroy === 'function') {
+          cursor.destroy();
+        }
+      }
+    });
+
+    // Pipe cursor -> CSV transform -> HTTP response stream
+    pipeline(cursor, csvTransform, res, (err) => {
+      if (err) {
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Streaming export failed', details: err.message });
+        } else {
+          console.warn(`[jobRoutes] Export pipeline ended with error: ${err.message}`);
+        }
+      }
+    });
+  } catch (err) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/jobs/:id/errors
 // Paginated fetch of all rejected / errored rows for a given job.
 // Queries both DeadLetterQueue (DLQ) and UploadError and merges results
@@ -377,7 +592,9 @@ router.get('/:id/events', async (req, res) => {
 //   page      - page number (default: 1)
 //   limit     - records per page (default: 50, max: 200)
 //   source    - 'dlq' | 'upload' | 'all' (default: 'all')
-//   field     - filter by failedField (DLQ) or errorType (UploadError)
+//   category  - filter by error category / errorType (e.g. 'VALIDATION_FAILED')
+//   field     - filter / search by failedField
+//   search    - field-level or text search across errors
 //   sortOrder - 'asc' | 'desc' row order (default: 'asc')
 // ---------------------------------------------------------------------------
 router.get('/:id/errors', async (req, res) => {
@@ -386,7 +603,14 @@ router.get('/:id/errors', async (req, res) => {
     page = 1,
     limit = 50,
     source = 'all',
+    category,
+    errorCategory,
+    errorType,
     field,
+    failedField,
+    fieldName,
+    search,
+    q,
     sortOrder = 'asc'
   } = req.query;
 
@@ -406,9 +630,69 @@ router.get('/:id/errors', async (req, res) => {
 
     const dlqFilter = { jobId: id };
     const uploadFilter = { fileId: id };
-    if (field) {
-      dlqFilter.failedField = field;
-      uploadFilter.errorType = field;
+
+    // 1. Error Category filter
+    const cat = category || errorCategory || errorType;
+    if (cat) {
+      const catList = Array.isArray(cat)
+        ? cat
+        : String(cat).split(',').map(s => s.trim()).filter(Boolean);
+      if (catList.length === 1) {
+        const catRegex = { $regex: new RegExp(`^${escapeRegex(catList[0])}$`, 'i') };
+        dlqFilter.errorType = catRegex;
+        uploadFilter.errorType = catRegex;
+      } else if (catList.length > 1) {
+        const catRegexes = catList.map(c => new RegExp(`^${escapeRegex(c)}$`, 'i'));
+        dlqFilter.errorType = { $in: catRegexes };
+        uploadFilter.errorType = { $in: catRegexes };
+      }
+    }
+
+    // 2. Field-level filter / search
+    const targetField = field || failedField || fieldName;
+    if (targetField) {
+      const escapedField = escapeRegex(String(targetField).trim());
+      dlqFilter.failedField = { $regex: new RegExp(escapedField, 'i') };
+      uploadFilter.$or = [
+        { errorType: { $regex: new RegExp(escapedField, 'i') } },
+        { errorMessage: { $regex: new RegExp(escapedField, 'i') } }
+      ];
+    }
+
+    // 3. Search across multiple error fields
+    const searchQuery = search || q;
+    if (searchQuery) {
+      const escapedSearch = escapeRegex(String(searchQuery).trim());
+      const searchRegex = { $regex: new RegExp(escapedSearch, 'i') };
+      const searchConditions = [
+        { failedField: searchRegex },
+        { rejectedReason: searchRegex },
+        { errorMessage: searchRegex },
+        { errorType: searchRegex }
+      ];
+      if (dlqFilter.$or) {
+        dlqFilter.$and = [
+          { $or: dlqFilter.$or },
+          { $or: searchConditions }
+        ];
+        delete dlqFilter.$or;
+      } else {
+        dlqFilter.$or = searchConditions;
+      }
+
+      const uploadSearchConditions = [
+        { errorMessage: searchRegex },
+        { errorType: searchRegex }
+      ];
+      if (uploadFilter.$or) {
+        uploadFilter.$and = [
+          { $or: uploadFilter.$or },
+          { $or: uploadSearchConditions }
+        ];
+        delete uploadFilter.$or;
+      } else {
+        uploadFilter.$or = uploadSearchConditions;
+      }
     }
 
     let dlqErrors = [];
@@ -416,33 +700,13 @@ router.get('/:id/errors', async (req, res) => {
     let dlqTotal = 0;
     let uploadTotal = 0;
 
-    if (source === 'all' || source === 'dlq') {
-      [dlqErrors, dlqTotal] = await Promise.all([
-        DeadLetterQueue.find(dlqFilter)
-          .sort({ rowNumber: sortDir })
-          // For 'all', over-fetch so we have enough to fill the page after merge
-          .limit(source === 'dlq' ? limitNum : limitNum * 2)
-          .lean(),
-        DeadLetterQueue.countDocuments(dlqFilter)
-      ]);
-    }
-
-    if (source === 'all' || source === 'upload') {
-      [uploadErrors, uploadTotal] = await Promise.all([
-        UploadError.find(uploadFilter)
-          .sort({ rowNumber: sortDir })
-          .limit(source === 'upload' ? limitNum : limitNum * 2)
-          .lean(),
-        UploadError.countDocuments(uploadFilter)
-      ]);
-    }
-
     // Normalize each record to a consistent shape
     const normalize = (doc, src) => ({
       source: src,
       rowNumber: doc.rowNumber,
       rejectedReason: doc.rejectedReason ?? doc.errorMessage ?? null,
-      failedField: doc.failedField ?? doc.errorType ?? null,
+      failedField: doc.failedField ?? (src === 'upload' ? doc.errorType : null),
+      errorType: doc.errorType ?? (src === 'dlq' ? 'MALFORMED_ROW' : 'PARSER_ERROR'),
       rawData: doc.rawData ?? doc.rawRow ?? null,
       details: doc.details ?? null,
       timestamp: doc.timestamp ?? doc.createdAt ?? null,
@@ -453,6 +717,20 @@ router.get('/:id/errors', async (req, res) => {
     let totalErrors;
 
     if (source === 'all') {
+      const fetchLimit = skip + limitNum;
+      [dlqErrors, dlqTotal, uploadErrors, uploadTotal] = await Promise.all([
+        DeadLetterQueue.find(dlqFilter)
+          .sort({ rowNumber: sortDir })
+          .limit(fetchLimit)
+          .lean(),
+        DeadLetterQueue.countDocuments(dlqFilter),
+        UploadError.find(uploadFilter)
+          .sort({ rowNumber: sortDir })
+          .limit(fetchLimit)
+          .lean(),
+        UploadError.countDocuments(uploadFilter)
+      ]);
+
       const combined = [
         ...dlqErrors.map(d => normalize(d, 'dlq')),
         ...uploadErrors.map(d => normalize(d, 'upload'))
@@ -461,10 +739,26 @@ router.get('/:id/errors', async (req, res) => {
       totalErrors = dlqTotal + uploadTotal;
       mergedErrors = combined.slice(skip, skip + limitNum);
     } else if (source === 'dlq') {
-      mergedErrors = dlqErrors.slice(skip, skip + limitNum).map(d => normalize(d, 'dlq'));
+      [dlqErrors, dlqTotal] = await Promise.all([
+        DeadLetterQueue.find(dlqFilter)
+          .sort({ rowNumber: sortDir })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        DeadLetterQueue.countDocuments(dlqFilter)
+      ]);
+      mergedErrors = dlqErrors.map(d => normalize(d, 'dlq'));
       totalErrors = dlqTotal;
     } else {
-      mergedErrors = uploadErrors.slice(skip, skip + limitNum).map(d => normalize(d, 'upload'));
+      [uploadErrors, uploadTotal] = await Promise.all([
+        UploadError.find(uploadFilter)
+          .sort({ rowNumber: sortDir })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        UploadError.countDocuments(uploadFilter)
+      ]);
+      mergedErrors = uploadErrors.map(d => normalize(d, 'upload'));
       totalErrors = uploadTotal;
     }
 
@@ -478,6 +772,12 @@ router.get('/:id/errors', async (req, res) => {
         limit: limitNum,
         pages: Math.ceil(totalErrors / limitNum),
         returned: mergedErrors.length
+      },
+      filters: {
+        source,
+        category: cat || null,
+        field: targetField || null,
+        search: searchQuery || null
       },
       errors: mergedErrors
     });
@@ -520,5 +820,9 @@ router.post('/:id/cancel', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+router.DLQToCsvStream = DLQToCsvStream;
+router.escapeCsvValue = escapeCsvValue;
+router.escapeRegex = escapeRegex;
 
 module.exports = router;
